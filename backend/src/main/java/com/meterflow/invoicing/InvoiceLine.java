@@ -1,0 +1,6 @@
+package com.meterflow.invoicing;
+import jakarta.persistence.*; import java.util.*; import java.math.*;
+@Entity @Table(name="invoice_lines") public class InvoiceLine {
+ @Id @GeneratedValue(strategy=GenerationType.UUID) private UUID id; @Column(nullable=false) private UUID invoiceId; @Column(nullable=false) private String metric; @Column(nullable=false,precision=24,scale=8) private BigDecimal quantity; @Column(nullable=false,precision=18,scale=2) private BigDecimal unitPrice; @Column(nullable=false,precision=18,scale=2) private BigDecimal amount; @Column(nullable=false,length=500) private String priceRule; @Column(nullable=false) private String taxRule="VAT 0% (demo default)";
+ protected InvoiceLine(){} public InvoiceLine(UUID i,String m,BigDecimal q,BigDecimal u,BigDecimal a,String r){invoiceId=i;metric=m;quantity=q;unitPrice=u;amount=a;priceRule=r;} public UUID getId(){return id;} public UUID getInvoiceId(){return invoiceId;} public String getMetric(){return metric;} public BigDecimal getQuantity(){return quantity;} public BigDecimal getUnitPrice(){return unitPrice;} public BigDecimal getAmount(){return amount;} public String getPriceRule(){return priceRule;} public String getTaxRule(){return taxRule;}
+}

@@ -1,0 +1,38 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-meterflow}
+      POSTGRES_USER: ${POSTGRES_USER:-meterflow}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-meterflow_local_password}
+    ports: ["5432:5432"]
+    volumes: ["pgdata:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-meterflow} -d ${POSTGRES_DB:-meterflow}"]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+  redis:
+    image: redis:7-alpine
+    ports: ["6379:6379"]
+  backend:
+    build: ./backend
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-meterflow}
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-meterflow}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-meterflow_local_password}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-meterflow-admin}
+      CUSTOMER_USERNAME: ${CUSTOMER_USERNAME:-customer}
+      CUSTOMER_PASSWORD: ${CUSTOMER_PASSWORD:-meterflow-customer}
+      SPRING_DATA_REDIS_HOST: redis
+    ports: ["8080:8080"]
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_started }
+  frontend:
+    build: ./frontend
+    ports: ["5173:80"]
+    depends_on: [backend]
+volumes:
+  pgdata:

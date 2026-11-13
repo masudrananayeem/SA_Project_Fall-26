@@ -1,0 +1,3 @@
+const API = import.meta.env.VITE_API_URL || '';
+const credentials = () => 'Basic ' + btoa(`${localStorage.getItem('mf_user')||'admin'}:${localStorage.getItem('mf_pass')||'meterflow-admin'}`);
+export async function api<T>(path:string, init:RequestInit={}):Promise<T>{const res=await fetch(`${API}/api${path}`,{...init,headers:{'Content-Type':'application/json','Authorization':credentials(),...(init.headers||{})}});if(!res.ok){let msg=`Request failed (${res.status})`;try{const p=await res.json();msg=p.detail||p.title||msg}catch{}throw new Error(msg)}return res.status===204?undefined as T:res.json()}

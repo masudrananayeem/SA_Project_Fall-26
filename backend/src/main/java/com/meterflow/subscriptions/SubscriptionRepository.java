@@ -1,0 +1,1 @@
+package com.meterflow.subscriptions; import org.springframework.data.jpa.repository.JpaRepository; import java.util.*; public interface SubscriptionRepository extends JpaRepository<Subscription,UUID>{List<Subscription> findByStatus(String status); Optional<Subscription> findTopByCustomerIdAndStatusOrderByPeriodStartDesc(String customer,String status);}

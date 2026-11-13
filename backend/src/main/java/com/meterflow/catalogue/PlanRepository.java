@@ -1,0 +1,1 @@
+package com.meterflow.catalogue; import org.springframework.data.jpa.repository.JpaRepository; import java.util.*; public interface PlanRepository extends JpaRepository<Plan,UUID>{List<Plan> findAllByOrderByPlanKeyAscVersionDesc();Optional<Plan> findTopByPlanKeyOrderByVersionDesc(String key);}

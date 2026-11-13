@@ -1,0 +1,1 @@
+package com.meterflow.invoicing; import org.springframework.data.jpa.repository.JpaRepository; import java.util.*; public interface InvoiceRepository extends JpaRepository<Invoice,UUID>{Optional<Invoice> findByCustomerIdAndPeriod(String c,String p);List<Invoice> findByCustomerIdOrderByCreatedAtDesc(String c);}

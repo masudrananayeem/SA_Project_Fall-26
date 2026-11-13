@@ -1,0 +1,1 @@
+package com.meterflow.invoicing; import org.springframework.data.jpa.repository.JpaRepository; import java.util.*; public interface InvoiceLineRepository extends JpaRepository<InvoiceLine,UUID>{List<InvoiceLine> findByInvoiceId(UUID id);}

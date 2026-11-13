@@ -1,0 +1,3 @@
+package com.meterflow.notifications;
+import jakarta.persistence.*;import java.util.*;
+@Entity @Table(name="webhooks") public class Webhook {@Id @GeneratedValue(strategy=GenerationType.UUID)private UUID id;@Column(nullable=false)private String customerId;@Column(nullable=false,length=1000)private String endpoint;@Column(nullable=false)private String secret;@Column(nullable=false)private boolean active=true;protected Webhook(){}public Webhook(String c,String e,String s){customerId=c;endpoint=e;secret=s;}public UUID getId(){return id;}public String getCustomerId(){return customerId;}public String getEndpoint(){return endpoint;}public String getSecret(){return secret;}public boolean isActive(){return active;}}

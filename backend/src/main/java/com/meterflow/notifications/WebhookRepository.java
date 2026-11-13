@@ -1,0 +1,1 @@
+package com.meterflow.notifications;import org.springframework.data.jpa.repository.JpaRepository;import java.util.*;public interface WebhookRepository extends JpaRepository<Webhook,UUID>{List<Webhook> findByCustomerIdAndActiveTrue(String c);}

@@ -1,0 +1,3 @@
+package com.meterflow.notifications;
+import jakarta.validation.constraints.*;import jakarta.validation.Valid;import org.springframework.web.bind.annotation.*;import java.util.*;
+@RestController @RequestMapping("/api/webhooks")public class WebhookController{private final WebhookRepository repo;public WebhookController(WebhookRepository r){repo=r;}public record Input(@NotBlank String customerId,@NotBlank String endpoint,@NotBlank String secret){}@GetMapping public List<Webhook> all(){return repo.findAll();}@PostMapping public Webhook create(@Valid @RequestBody Input i){return repo.save(new Webhook(i.customerId(),i.endpoint(),i.secret()));}}
