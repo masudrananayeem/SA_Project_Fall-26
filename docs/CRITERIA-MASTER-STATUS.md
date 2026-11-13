@@ -70,3 +70,12 @@ Do not mark the project submission-ready until all remaining FRs are implemented
 - FR9: Added durable webhook delivery rows, HMAC-SHA256 signatures, scheduled retries with exponential backoff, delivery logs, and manual replay endpoint. Still partial: endpoint allow-list/complete DNS-rebinding-safe SSRF controls, dead-letter operations, delivery metrics, and automated end-to-end receiver tests remain.
 - Invoice finalisation now enqueues `invoice.finalised`; payment failure enqueues `payment.failed`; budget thresholds enqueue `usage.threshold_reached`.
 - New unit tests cover credit consumption and dunning state transitions. They have not been executed in this environment because Maven is unavailable.
+
+
+## V6 implementation update (2026-11-13)
+- FR1: event lateness is now measured against the end of the event's UTC billing month plus 72 hours, rather than a rolling 72 hours from event timestamp. A full persisted late-adjustment ledger and separate adjustment invoice workflow remain outstanding.
+- FR3: plans may now store charge-definition JSON and PricingService evaluates the registered flat-fee, per-unit, per-seat, package, volume-tier, and graduated-tier strategies. Seat quantity currently defaults to one; configurable subscription seat counts and allowance/commitment composition across mixed charges remain outstanding.
+- Existing V5 credit, budget, dunning and webhook code remains in place; production-provider integration and full end-to-end verification are not claimed.
+
+- V6 FR3 qualification: all six registered charge strategy types are now wired into `PricingService` when a plan includes `charges`; per-seat quantity remains fixed at one, and cross-strategy allowances/commitments are not fully modelled.
+- V6 FR1 qualification: 72-hour acceptance is period-close-based; a persisted late-adjustment ledger and post-close adjustment invoice remain incomplete.

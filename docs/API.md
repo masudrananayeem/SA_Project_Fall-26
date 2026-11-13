@@ -47,3 +47,29 @@ All endpoints use HTTP Basic authentication in the demo profile. Admin-only oper
 - `POST /api/webhooks/deliveries/{deliveryId}/replay` — admin manually requeues a delivery.
 - Headers: `X-MeterFlow-Event` and `X-MeterFlow-Signature: sha256={hex}`. Signature is HMAC-SHA256 over the exact raw JSON body.
 - Automatic events: `invoice.finalised`, `payment.failed`, `dunning.retry`, `usage.threshold_reached`.
+
+
+## V6: configurable plan charges
+`POST /api/catalogue/plans` remains admin-only and accepts an optional `charges` array. When supplied, the configured strategy list is used by live estimate and invoice pricing. Supported `type` values: `flat_fee`, `per_unit`, `per_seat`, `package`, `volume_tier`, `graduated_tier`.
+
+Example:
+```json
+{
+  "planKey": "api-growth",
+  "name": "API Growth",
+  "currency": "BDT",
+  "flatFee": 0,
+  "unitPrice": 0,
+  "metric": "api_calls",
+  "freeAllowance": 0,
+  "minimumCommitment": 0,
+  "charges": [
+    {"type":"flat_fee","name":"Platform fee","amount":500},
+    {"type":"graduated_tier","name":"API calls","amount":0,"tiers":[
+      {"upTo":10000,"unitPrice":0.02},
+      {"upTo":null,"unitPrice":0.015}
+    ]}
+  ]
+}
+```
+If `charges` is omitted or empty, the legacy flat fee + per-unit + allowance + minimum commitment calculation is retained. `per_seat` currently uses one seat until seat quantities are modelled at subscription level.

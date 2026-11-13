@@ -135,3 +135,10 @@ Copy `frontend/.env.example` to `frontend/.env`, then set a non-default local pa
 
 ### Additional billing workflows (V5)
 The backend now includes prepaid credit balances and credit notes, budget threshold checks, persisted mock dunning cases, and durable HMAC-signed webhook deliveries with retry/replay APIs. See `docs/CRITERIA-MASTER-STATUS.md` for exact implementation boundaries. These are development implementations and still require integration/build/load verification before production use.
+
+
+### V6 updates
+- Late-event acceptance now uses the billing-period close plus a 72-hour grace window (UTC), matching the period-based interpretation of FR1.
+- Plan creation accepts optional `charges` definitions; configured charge strategies are now evaluated by the production pricing service rather than existing only as isolated strategy classes.
+- `charges` can include `flat_fee`, `per_unit`, `per_seat`, `package`, `volume_tier`, and `graduated_tier`. If omitted, the legacy flat + per-unit + free allowance + minimum commitment calculation is retained.
+- Remaining limitations are tracked in `docs/CRITERIA-MASTER-STATUS.md`.

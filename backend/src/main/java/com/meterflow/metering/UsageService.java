@@ -40,8 +40,14 @@ public class UsageService {
         List<Map<String, String>> rejected = new ArrayList<>();
 
         for (var event : inputs) {
-            if (event.timestamp().isBefore(now.minus(MAX_LATENESS))) {
-                rejected.add(Map.of("idempotencyKey", event.idempotencyKey(), "reason", "Event is older than the 72-hour late-arrival window"));
+            // Late-arrival eligibility is measured from the close of the event's billing
+            // month, not from the event timestamp. Events inside a closed period remain
+            // admissible for 72 hours so billing can pick them up in a late adjustment.
+            YearMonth eventPeriod = YearMonth.from(event.timestamp().atZone(ZoneOffset.UTC));
+            Instant periodClose = eventPeriod.plusMonths(1).atDay(1).atStartOfDay(ZoneOffset.UTC).toInstant();
+            if (now.isAfter(periodClose.plus(MAX_LATENESS))) {
+                rejected.add(Map.of("idempotencyKey", event.idempotencyKey(),
+                        "reason", "Billing period late-arrival window (72 hours after period close) has expired"));
                 continue;
             }
             if (event.timestamp().isAfter(now.plus(FUTURE_TOLERANCE))) {
