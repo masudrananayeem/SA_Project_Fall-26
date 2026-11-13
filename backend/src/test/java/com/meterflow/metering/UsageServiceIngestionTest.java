@@ -6,27 +6,24 @@ import com.meterflow.catalogue.PricingService;
 import com.meterflow.subscriptions.SubscriptionRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.dao.DataIntegrityViolationException;
 
 import java.math.BigDecimal;
 import java.time.Instant;
-import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
 class UsageServiceIngestionTest {
     private UsageEventRepository repository;
-    private JdbcTemplate jdbc;
     private UsageService service;
 
     @BeforeEach
     void setUp() {
         repository = mock(UsageEventRepository.class);
-        jdbc = mock(JdbcTemplate.class);
-        service = new UsageService(repository, new ObjectMapper(), jdbc, mock(PricingService.class),
+        service = new UsageService(repository, new ObjectMapper(), mock(PricingService.class),
                 mock(SubscriptionRepository.class), mock(PlanRepository.class));
     }
 
@@ -37,25 +34,30 @@ class UsageServiceIngestionTest {
 
     @Test
     void rejectsEventsOlderThanSeventyTwoHours() {
-        var result = service.ingest(List.of(event("late-1", Instant.now().minusSeconds(73 * 3600))));
+        when(repository.existsByIdempotencyKey("late-1")).thenReturn(false);
+        var result = service.ingest(java.util.List.of(event("late-1", Instant.now().minusSeconds(73 * 3600))));
         assertEquals(0, result.get("accepted"));
         assertEquals(1, result.get("rejected"));
-        verifyNoInteractions(jdbc);
+        verify(repository, never()).saveAndFlush(any());
     }
 
     @Test
     void acceptsRecentEventsAndCountsExistingIdempotencyKeys() {
-        when(jdbc.update(anyString(), any(Object[].class))).thenReturn(0, 1);
-        var result = service.ingest(List.of(event("duplicate-1", Instant.now()), event("new-1", Instant.now())));
+        when(repository.existsByIdempotencyKey("duplicate-1")).thenReturn(true);
+        when(repository.existsByIdempotencyKey("new-1")).thenReturn(false);
+        var result = service.ingest(java.util.List.of(
+                event("duplicate-1", Instant.now()), event("new-1", Instant.now())));
         assertEquals(1, result.get("accepted"));
         assertEquals(1, result.get("duplicates"));
-        verify(jdbc, times(2)).update(anyString(), any(Object[].class));
+        verify(repository, times(1)).saveAndFlush(any(UsageEvent.class));
     }
 
     @Test
-    void rejectsEventsTooFarInTheFuture() {
-        var result = service.ingest(List.of(event("future-1", Instant.now().plusSeconds(600))));
-        assertEquals(1, result.get("rejected"));
-        verifyNoInteractions(jdbc);
+    void treatsConcurrentUniqueKeyCollisionAsDuplicate() {
+        when(repository.existsByIdempotencyKey("race-1")).thenReturn(false);
+        when(repository.saveAndFlush(any(UsageEvent.class))).thenThrow(new DataIntegrityViolationException("unique key"));
+        var result = service.ingest(java.util.List.of(event("race-1", Instant.now())));
+        assertEquals(0, result.get("accepted"));
+        assertEquals(1, result.get("duplicates"));
     }
 }

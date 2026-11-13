@@ -20,12 +20,3 @@ POST to `/api/subscriptions`.
 `GET /api/invoices/{invoiceId}/lines`
 
 All API endpoints except health, docs and OpenAPI require HTTP Basic authentication in this starter.
-
-## Event-ingestion semantics (V2.1)
-- `events` must contain between 1 and 1,000 entries.
-- `idempotencyKey` is unique across the event table. Concurrent replays of the same key are accepted only once; other attempts are counted in `duplicates`.
-- Events older than 72 hours or more than 5 minutes in the future are skipped and returned in `rejectionDetails` with their idempotency key and reason.
-- A successful response contains `received`, `accepted`, `duplicates`, `rejected`, `rejectionDetails`, and `lateEventWindowHours`.
-
-## Subscription lifecycle
-The console supports create, pause, resume and cancel. A subscription references a specific plan UUID/version. Mid-cycle proration, trials and scheduled changes are not yet implemented.

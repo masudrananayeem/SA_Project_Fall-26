@@ -18,21 +18,6 @@ public class ApiExceptionHandler {
         return ResponseEntity.badRequest().body(problem);
     }
 
-    @ExceptionHandler(IllegalStateException.class)
-    ResponseEntity<ProblemDetail> stateConflict(IllegalStateException ex) {
-        var problem = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, ex.getMessage());
-        problem.setTitle("State conflict");
-        return ResponseEntity.status(HttpStatus.CONFLICT).body(problem);
-    }
-
-    @ExceptionHandler({DataIntegrityViolationException.class, ObjectOptimisticLockingFailureException.class})
-    ResponseEntity<ProblemDetail> persistenceConflict(Exception ex) {
-        var problem = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT,
-                "The resource was changed concurrently or conflicts with an existing record. Refresh and retry safely.");
-        problem.setTitle("Persistence conflict");
-        return ResponseEntity.status(HttpStatus.CONFLICT).body(problem);
-    }
-
     @ExceptionHandler(MethodArgumentNotValidException.class)
     ResponseEntity<ProblemDetail> validation(MethodArgumentNotValidException ex) {
         var problem = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, "Request validation failed");
@@ -40,5 +25,20 @@ public class ApiExceptionHandler {
         problem.setProperty("errors", ex.getBindingResult().getFieldErrors().stream()
                 .map(error -> error.getField() + ": " + error.getDefaultMessage()).toList());
         return ResponseEntity.badRequest().body(problem);
+    }
+
+    @ExceptionHandler({DataIntegrityViolationException.class, ObjectOptimisticLockingFailureException.class})
+    ResponseEntity<ProblemDetail> persistenceConflict(Exception ex) {
+        var problem = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT,
+                "The resource changed concurrently or conflicts with an existing record. Refresh and retry safely.");
+        problem.setTitle("Persistence conflict");
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(problem);
+    }
+
+    @ExceptionHandler(IllegalStateException.class)
+    ResponseEntity<ProblemDetail> stateConflict(IllegalStateException ex) {
+        var problem = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, ex.getMessage());
+        problem.setTitle("State conflict");
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(problem);
     }
 }
