@@ -34,10 +34,10 @@
 | FR3 | flat, per-unit, graduated, volume, package, per-seat, allowance, minimum, BDT/USD | Partial | Strategy implementations and tests exist; persisted plan schema/API still exposes only flat + per-unit configuration. |
 | FR4 | create, upgrade/downgrade, proration, pause/resume/cancel, trials | Partial | Create/pause/resume/cancel exist. Upgrade/downgrade proration, scheduled changes and trial lifecycle remain. |
 | FR5 | draft/final invoice, explainable lines and configured tax | Partial | Draft invoice and explainable line are present. Tax is explicitly demo 0%; billing dates and restartable batch execution remain. |
-| FR6 | prepaid credits, credit notes, late adjustments | Not implemented | Must add ledger with immutable entries, credit application and adjustment invoices. |
-| FR7 | live estimate, budgets, 50/80/100 alerts, ≤1-minute refresh | Partial | Usage estimate endpoint and dashboard are present. Budget persistence, threshold crossing dedupe and notification delivery remain. |
-| FR8 | mock payment failure, retries days 1/3/7, state transitions, notifications | Not implemented | Mock payment success only; dunning scheduler/state machine and notices remain. |
-| FR9 | HMAC webhook, retries/backoff, delivery logs, manual replay | Partial | Endpoint registration and secret masking exist. Signed outbound delivery, delivery persistence, retry and replay remain. |
+| FR6 | prepaid credits, credit notes, late adjustments | Partial | Prepaid balance, top-up, credit note and invoice credit application implemented; dispute lifecycle and late-event adjustment ledger remain. |
+| FR7 | live estimate, budgets, 50/80/100 alerts, ≤1-minute refresh | Partial | Budget persistence, threshold dedupe and webhook alerts implemented; email/SMS and independent refresh worker remain. |
+| FR8 | mock payment failure, retries days 1/3/7, state transitions, notifications | Partial | Persisted dunning case, schedule, state transitions and webhook notices implemented; provider-backed retry and account suspension propagation remain. |
+| FR9 | HMAC webhook, retries/backoff, delivery logs, manual replay | Partial | HMAC-SHA256 outbound delivery, durable logs, retry/backoff and replay implemented; security hardening and end-to-end tests remain. |
 | FR10 | immutable plan versions, subscriptions pinned, migration, historical simulator | Partial | New plan version creation and subscription plan reference exist. Migration workflow and last-month simulation remain. |
 
 ## C. Quality attributes QA1–QA5
@@ -61,3 +61,12 @@
 ## E. Release gate
 
 Do not mark the project submission-ready until all remaining FRs are implemented, Maven tests and Docker build pass, the frontend production build passes, QA1–QA5 have reproducible evidence, and the external C10/C12 items are completed. This file intentionally reports honest status rather than claiming unrun tests passed.
+
+
+## V5 implementation update (13 Nov 2026)
+- FR6: Added customer credit accounts, prepaid top-ups, credit-note records, currency checks, pessimistic account locking, and credit application during invoice creation. Still partial: credit-note dispute lifecycle, refunds/reversals, and late-event adjustment ledger are not implemented.
+- FR7: Added monthly customer budgets, 50/80/100% threshold evaluation, persisted one-time threshold flags, and evaluation after usage ingestion. Still partial: alert delivery is webhook-based only; no email/SMS channel and no independent one-minute polling worker.
+- FR8: Added persisted dunning cases, day-1/day-3/day-7 retry schedule, past-due/suspended/reactivated states, mock payment success/failure endpoints, and webhook notifications. Still partial: scheduled retries simulate failure rather than invoking a real payment provider adapter; account/subscription suspension is not yet propagated to all authorization and billing paths.
+- FR9: Added durable webhook delivery rows, HMAC-SHA256 signatures, scheduled retries with exponential backoff, delivery logs, and manual replay endpoint. Still partial: endpoint allow-list/complete DNS-rebinding-safe SSRF controls, dead-letter operations, delivery metrics, and automated end-to-end receiver tests remain.
+- Invoice finalisation now enqueues `invoice.finalised`; payment failure enqueues `payment.failed`; budget thresholds enqueue `usage.threshold_reached`.
+- New unit tests cover credit consumption and dunning state transitions. They have not been executed in this environment because Maven is unavailable.

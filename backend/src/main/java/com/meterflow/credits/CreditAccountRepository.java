@@ -1,0 +1,2 @@
+package com.meterflow.credits;import org.springframework.data.jpa.repository.*;import jakarta.persistence.LockModeType;import java.util.*;import org.springframework.data.repository.query.Param;
+public interface CreditAccountRepository extends JpaRepository<CreditAccount,UUID>{@Lock(LockModeType.PESSIMISTIC_WRITE) @Query("select a from CreditAccount a where a.customerId=:c") Optional<CreditAccount> lockByCustomer(@Param("c")String c);Optional<CreditAccount> findByCustomerId(String c);}

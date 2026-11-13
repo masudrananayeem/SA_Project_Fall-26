@@ -131,3 +131,7 @@ Do not submit QA targets as achieved until you have run the corresponding tests 
 
 ### Frontend local configuration
 Copy `frontend/.env.example` to `frontend/.env`, then set a non-default local password matching `ADMIN_PASSWORD` in the root `.env`. Restart Vite after changing environment variables. Never commit either `.env` file.
+
+
+### Additional billing workflows (V5)
+The backend now includes prepaid credit balances and credit notes, budget threshold checks, persisted mock dunning cases, and durable HMAC-signed webhook deliveries with retry/replay APIs. See `docs/CRITERIA-MASTER-STATUS.md` for exact implementation boundaries. These are development implementations and still require integration/build/load verification before production use.

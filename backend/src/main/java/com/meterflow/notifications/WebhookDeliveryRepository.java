@@ -1,0 +1,1 @@
+package com.meterflow.notifications;import org.springframework.data.jpa.repository.JpaRepository;import java.util.*;public interface WebhookDeliveryRepository extends JpaRepository<WebhookDelivery,UUID>{List<WebhookDelivery> findByStatusAndNextAttemptAtBefore(String status,java.time.Instant now);List<WebhookDelivery> findByWebhookIdOrderByCreatedAtDesc(UUID id);}

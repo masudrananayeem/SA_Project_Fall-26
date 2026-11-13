@@ -1,0 +1,1 @@
+package com.meterflow.payments;import org.springframework.data.jpa.repository.JpaRepository;import java.util.*;public interface DunningRepository extends JpaRepository<DunningCase,UUID>{Optional<DunningCase> findByInvoiceId(UUID id);List<DunningCase> findByStatus(String status);}

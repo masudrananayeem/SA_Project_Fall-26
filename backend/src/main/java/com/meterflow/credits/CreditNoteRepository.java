@@ -1,0 +1,1 @@
+package com.meterflow.credits;import org.springframework.data.jpa.repository.JpaRepository;import java.util.*;public interface CreditNoteRepository extends JpaRepository<CreditNote,UUID>{List<CreditNote> findByCustomerIdOrderByCreatedAtDesc(String customerId);}
