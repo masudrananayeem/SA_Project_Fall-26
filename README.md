@@ -6,60 +6,101 @@
 **Section:** 64-K  
 **Project:** Project 2 — MeterFlow
 
-MeterFlow is a Spring Boot modular-monolith reference implementation with a React customer/admin console. It demonstrates usage ingestion, idempotency, configurable pricing, subscriptions, invoice generation, live estimates, budgets, mock payments, webhook delivery and architecture/testing documentation.
+MeterFlow is a course-project implementation foundation for usage-based SaaS/API billing. It uses a Spring Boot modular monolith and a React customer/admin console. Version 2 adds an extensible pricing strategy registry, a reusable metric aggregation engine, and subscription-aware live estimates.
 
-## Stack
-- Java 21, Spring Boot 4.0.0, Maven
-- Spring Modulith, Spring Data JPA, Spring Batch
-- PostgreSQL 17, Redis 7 (cache-ready)
+## Technology
+- Java 21, Spring Boot 4.0.0, Spring Modulith, Maven
+- Spring Data JPA, Spring Batch starter, Spring Security, Actuator, SpringDoc
+- PostgreSQL 17, Redis 7
 - React 19, TypeScript, Vite, Tailwind CSS
-- Docker Compose, JUnit 5, Testcontainers, k6
+- JUnit 5, Spring Modulith tests, Testcontainers, k6
 
-## Quick start
+## Start with Docker
 
-Requirements: Docker Desktop, Java 21, Maven 3.9+, Node.js 20+.
+1. Install Docker Desktop.
+2. Copy `.env.example` to `.env` and change all demo passwords.
+3. Run:
 
 ```bash
-cp .env.example .env
 docker compose up --build
 ```
 
+Open:
 - Frontend: http://localhost:5173
-- Backend API: http://localhost:8080/api
+- API: http://localhost:8080/api
 - Swagger UI: http://localhost:8080/swagger-ui/index.html
-- Actuator health: http://localhost:8080/actuator/health
-- PostgreSQL: localhost:5432
-- Redis: localhost:6379
+- Health: http://localhost:8080/actuator/health
 
-For local development without Docker:
+Demo credentials are `admin` / `meterflow-admin` and `customer` / `meterflow-customer`. They are local-demo credentials only. Do not deploy them publicly.
+
+## Local development
+
+Backend (requires JDK 21 and Maven 3.9+):
 
 ```bash
-cd backend && mvn spring-boot:run
-cd frontend && npm install && npm run dev
+cd backend
+mvn spring-boot:run
 ```
 
-Demo HTTP Basic credentials: `admin / meterflow-admin` and `customer / meterflow-customer`. Change these immediately for any non-local deployment. This is a course/demo authentication setup, not a production identity provider.
+Frontend (requires Node.js 20+):
 
-## Core API
-- `POST /api/usage/events:batch` — ingest up to 1,000 events; repeated idempotency keys are ignored.
-- `GET /api/usage/summary?customerId=...` — aggregated current usage.
-- `GET /api/usage/estimate?customerId=...` — estimated spend.
-- `POST /api/catalogue/plans` — create a plan version.
-- `GET /api/catalogue/plans` — list plans.
-- `POST /api/subscriptions` — create a subscription.
-- `POST /api/invoices/run?period=YYYY-MM` — run invoice generation for active subscriptions.
-- `GET /api/invoices?customerId=...` — list invoices.
-- `GET /api/invoices/{id}/lines` — explain invoice lines.
-- `POST /api/payments/mock/{invoiceId}/pay` — simulate successful payment.
-- `POST /api/webhooks` — register a webhook endpoint.
+```bash
+cd frontend
+npm install
+npm run dev
+```
 
-A seed plan and demo customers are inserted on first startup. See `docs/API.md` for request examples.
+The frontend uses same-origin `/api` requests. When running Vite separately, set `VITE_API_URL` if your API is not available at the Vite origin and configure backend CORS/reverse proxy accordingly.
 
-## Architecture
-The backend is a modular monolith. Modules: `metering`, `catalogue`, `subscriptions`, `invoicing`, `payments`, `notifications`, and `shared`. Cross-module communication should use published application events; the initial implementation keeps the primary billing flow synchronous and persists core state transactionally. The `outbox` table and webhook delivery model provide a base for reliable asynchronous delivery.
+## Key API routes
 
-## Important engineering notes
-This repository is a runnable course-project foundation, not a certified billing platform. Before claiming all assignment success measures, complete the items in `docs/REQUIREMENTS-TRACEABILITY.md` and run the documented benchmarks. In particular, million-event accuracy, 2,000 events/sec, 10,000-customer/10-minute billing, 72-hour late-event handling, full tier variants, tax/credit-note workflows, retry scheduler, HMAC webhook retries, batch restart/partitioning and plan simulation require further validation/extension. Do not represent benchmark targets as achieved until raw test evidence exists.
+| Method | Route | Purpose |
+|---|---|---|
+| POST | `/api/usage/events:batch` | Ingest up to 1,000 events |
+| GET | `/api/usage/summary?customerId=demo-customer` | Current-month usage totals |
+| GET | `/api/usage/estimate?customerId=demo-customer` | Estimate using active subscription plan |
+| GET/POST | `/api/catalogue/plans` | List/create immutable plan versions |
+| GET/POST | `/api/subscriptions` | List/create subscriptions |
+| POST | `/api/invoices/run?period=YYYY-MM` | Generate period invoices |
+| GET | `/api/invoices?customerId=demo-customer` | List invoices |
+| GET | `/api/invoices/{id}/lines` | Explain invoice lines |
+| POST | `/api/payments/mock/{invoiceId}/pay` | Mock payment |
+| POST | `/api/webhooks` | Register webhook destination |
 
-## Project identity
-See `docs/PROJECT-IDENTITY.md`.
+## Version 2 additions
+
+- `catalogue/charges`: strategy registry for `flat_fee`, `per_unit`, `graduated_tier`, `volume_tier`, `package`, and `per_seat`. The registry is open for extension; new charge strategies can be added without editing existing strategy implementations.
+- `metering/aggregation`: `sum`, `count`, `maximum`, `unique_count`, and `latest_value` with exact-match property filters.
+- Live estimate now loads the customer's active subscription and its referenced plan version, then rates the current usage quantity using the existing persisted plan formula.
+- Unit tests cover pricing strategies and metric aggregation.
+
+## Testing and evidence
+
+```bash
+cd backend
+mvn test
+```
+
+Run the k6 load test against a running local service:
+
+```bash
+k6 run performance/ingest.js
+```
+
+The script's 2,000 iteration/s arrival rate and submitted event count are a load-test workload, not evidence that the QA2 latency target is achieved. Record raw output, environment details and p95 latency in `docs/quality-evidence/` before making a performance claim.
+
+## Architecture and course deliverables
+
+- `docs/ARCHITECTURE.md` — module and runtime architecture
+- `docs/ADR/` — architecture decision records
+- `docs/UTILITY-TREE.md` — quality attribute scenarios
+- `docs/PATTERN-JUSTIFICATION.md` — design-pattern rationale
+- `docs/REQUIREMENTS-TRACEABILITY.md` — FR/QA implementation status and remaining work
+- `docs/API.md` — API examples
+- `docs/TESTING.md` — test strategy
+
+## Honest implementation status
+
+This is an improved course-project foundation, **not yet a fully verified production billing system**. Some critical assignment criteria remain incomplete: late-event adjustment handling, DB-race-safe idempotent ingestion, complete plan JSON persistence, subscription proration/trials/scheduled changes, tax configuration, real Spring Batch chunk/partition/restart flow, credit ledger/credit notes, budget threshold notifications, dunning retry scheduler, signed/replayable webhook delivery, historical plan simulator, and measured QA1–QA3/QA5 evidence. The exact status is maintained in `docs/REQUIREMENTS-TRACEABILITY.md`.
+
+Do not submit QA targets as achieved until you have run the corresponding tests and retained the raw evidence. The project deliberately documents these gaps instead of fabricating results.
