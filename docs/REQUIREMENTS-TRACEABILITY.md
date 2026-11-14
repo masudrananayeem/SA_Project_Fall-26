@@ -18,7 +18,7 @@ This matrix distinguishes implemented foundation from work still required before
 | QA2 | No measured result included | k6 2,000 events/sec test; p95 <=100ms evidence |
 | QA3 | Unique customer-period invoice constraint | Spring Batch restart/partition implementation and 10k customer benchmark |
 | QA4 | Strategy registry includes six required charge types; new strategy can be registered without changing existing strategies | Persisted configuration-only plan rollout and instructor-specified new charge extension test remain |
-| QA5 | Invoice line explanation endpoint | Include event provenance IDs/count and compare estimate to final invoice within 1% |
+| QA5 | Invoice lines now retain source event IDs as JSON and source-event count; a unit test covers persistence of this provenance contract | Verify schema migration in production and add estimate-vs-final reconciliation acceptance test within 1% |
 
 ## Important
 The project source is an executable foundation and representative implementation. Do not state that unmet rows are complete. Add tests, raw output and charts before submitting a success claim.
@@ -42,3 +42,12 @@ The project source is an executable foundation and representative implementation
 | Frontend credentials | Removes the hard-coded default password; credentials can be supplied through local `.env` or browser local storage | `frontend/src/api.ts`, `frontend/.env.example`; Basic Auth is still demo-grade and should be replaced with token/session auth for production |
 
 The V2.1 changes improve ingestion correctness and operational feedback, but do not by themselves satisfy the 2,000 events/sec or 1M-event acceptance targets. Those require repeatable load tests against the target PostgreSQL infrastructure.
+
+
+## V10 implementation update (2026-11-15)
+- QA5 improvement: invoice lines now persist `source_event_ids_json` and `source_event_count`; the billing path supplies the IDs of usage events used for the billable metric. A focused unit test covers the value-object/entity contract. This improves traceability but does not prove the 1% estimate reconciliation target.
+- C4 improvement: `CorrelationIdFilter` propagates a validated `X-Correlation-ID` header and places it in SLF4J MDC for request log correlation. A JSON logging encoder/exporter and distributed tracing backend are not configured.
+- C7 improvement: added `MINI-ATAM.md` with six quality attribute scenarios, trade-offs, sensitivity points and explicit risk analysis.
+- C9 improvement: added `QUALITY-ACCEPTANCE-RUNBOOK.md` with reproducible QA1–QA5 procedures and evidence integrity rules. No results are fabricated; all QA performance targets remain unverified.
+- C10/C12 remain external course activities and cannot be completed by code generation.
+- Critical release gaps remain: restart-safe chunk-oriented Spring Batch billing, complete Flyway baseline/migrations, production identity (OIDC/JWT), webhook SSRF hardening, and real benchmark execution.

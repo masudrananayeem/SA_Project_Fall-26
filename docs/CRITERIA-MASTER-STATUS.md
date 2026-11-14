@@ -15,12 +15,12 @@
 | C1 | Technology, configuration, one-command local deployment, resource budget | Improved / pending verification | Compose has PostgreSQL+Redis+backend+frontend, persistent `pgdata`, health-gated dependencies and 5 GiB aggregate memory ceilings. Clean-machine startup and 8 GiB host verification remain unrun. See `DEPLOYMENT.md`. |
 | C2 | Typed, validated configuration; profiles; no committed secrets | Partial | Dev/test/prod profile files now exist; prod requires environment secrets and uses Hibernate `validate`. Typed `@ConfigurationProperties`, secret-manager integration and complete migration provisioning remain. |
 | C3 | API validation, consistent errors, pagination, auth and authorization | Improved / partial | Subscription lists and plan-change history now enforce customer scope; invoices, usage, credits and budgets have ownership checks. Admin operations remain role-protected. Pagination, persistent identity, API contract tests and webhook tenant self-service remain. |
-| C4 | Structured logs, metrics, traces, correlation IDs and health | Partial | Actuator health/metrics and UTC timestamps are configured. JSON logging, correlation propagation, tracing exporter and dashboard evidence remain. |
+| C4 | Structured logs, metrics, traces, correlation IDs and health | Partial | Actuator health/metrics and UTC timestamps are configured. Correlation propagation is now implemented with `X-Correlation-ID` and SLF4J MDC; JSON logging, tracing exporter and dashboard evidence remain. |
 | C5 | Unit, integration, architecture, security and CI tests | Improved / pending verification | GitHub Actions workflow now runs Maven verify and frontend build. Unit/architecture tests and Testcontainers dependencies exist; workflow execution and real integration coverage are not yet verified. |
 | C6 | Architecture verification and modular boundaries | Pending evidence | Spring Modulith module verification test exists; CI must demonstrate it passes in a supported JDK/Maven environment. |
-| C7 | C4 diagrams, ADRs, utility tree, six scenarios, mini-ATAM | Partial | Four ADRs and utility tree exist. See `ARCHITECTURE.md`; diagrams/scenarios and quantified trade-off analysis need instructor-aligned review. |
+| C7 | C4 diagrams, ADRs, utility tree, six scenarios, mini-ATAM | Partial | Four ADRs and utility tree exist. See `ARCHITECTURE.md`; C4 diagrams and six quality scenarios are documented; mini-ATAM trade-offs and sensitivity points are in `MINI-ATAM.md`; instructor-aligned review remains. |
 | C8 | Pattern selection and justification | Partial | Strategy/Composite/Builder are represented in code. Visitor, State, Template Method and Observer are not all integrated into end-to-end flows. |
-| C9 | Quality-evidence report with raw reproducible measurements | Pending evidence | Evidence plan and k6 workload exist. No measured QA1–QA3/QA5 results are claimed. Record raw reports in `quality-evidence/`. |
+| C9 | Quality-evidence report with raw reproducible measurements | Pending evidence | Evidence plan and k6 workload exist. No measured QA1–QA3/QA5 results are claimed. V10 adds a reproducible runbook. Record raw reports in `quality-evidence/`. |
 | C10 | Instructor change request and response | External dependency | Await the instructor's actual change request. Do not fabricate one. Log request, design impact, implementation, tests and commit when received. |
 | C11 | Git history, contribution/process record and AI usage log | Partial | `.gitignore` exists, but the delivered ZIP is not proof of repository history. Initialise Git locally and record genuine commits and AI use in `PROCESS-LOG.md`. |
 | C12 | 15-minute live defence | External dependency | Prepare demo script and Q&A in `DEFENCE-GUIDE.md`; live performance can only be assessed during the defence. |
@@ -33,7 +33,7 @@
 | FR2 | sum/count/max/unique/latest + property filters | Partial | Standalone aggregation utility and unit tests exist. Production query/metric definitions and aggregation-to-invoice wiring remain. |
 | FR3 | flat, per-unit, graduated, volume, package, per-seat, allowance, minimum, BDT/USD | Partial | Six strategy types are persisted/evaluated and subscription seats are passed to pricing. Mixed-charge allowance/minimum composition and exhaustive currency/tier boundary tests remain. |
 | FR4 | create, upgrade/downgrade, proration, pause/resume/cancel, trials | Partial | Trial end, seat count, scheduled plan changes, immediate prorated plan changes and history exist. Trial conversion/expiry worker and scheduled change billing lifecycle remain. |
-| FR5 | draft/final invoice, explainable lines and configured tax | Partial | Draft/finalise, pricing lines and plan tax rate exist. Restartable Spring Batch billing, event-level provenance and invoice reconciliation remain. |
+| FR5 | draft/final invoice, explainable lines and configured tax | Partial | Draft/finalise, pricing lines and plan tax rate exist. Restartable Spring Batch billing, event-level provenance is now stored on invoice lines; estimate-vs-final reconciliation remains. |
 | FR6 | prepaid credits, credit notes, late adjustments | Partial | Prepaid balance, top-up, credit notes, invoice credit application and late-usage adjustment ledger exist. Refund/reversal/dispute lifecycle and automatic late-adjustment invoice integration remain. |
 | FR7 | live estimate, budgets, 50/80/100 alerts, ≤1-minute refresh | Partial | Budget persistence, threshold dedupe and webhook alerts implemented; email/SMS and independent refresh worker remain. |
 | FR8 | mock payment failure, retries days 1/3/7, state transitions, notifications | Partial | Persisted dunning case, day 1/3/7 schedule, state transitions and webhook notices exist. Real provider adapter, scheduler verification and subscription/access suspension propagation remain. |
@@ -44,11 +44,11 @@
 
 | ID | Acceptance target | Updated status | Required proof |
 |---|---|---|---|
-| QA1 | 1,000,000 events; 3% duplicates; 2% late; independent recomputation exact; zero double bill | Pending evidence | Deterministic fixture, independent oracle, reconciliation report and duplicate ledger. Late adjustments are not yet implemented. |
+| QA1 | 1,000,000 events; 3% duplicates; 2% late; independent recomputation exact; zero double bill | Pending evidence | Deterministic fixture, independent oracle, reconciliation report and duplicate ledger. Late-event ledger exists; independent oracle reconciliation and automatic next-cycle invoice integration still require verification. |
 | QA2 | 2,000 events/sec, p95 ≤100 ms during billing | Pending evidence | k6 raw output, machine specs, database size, concurrent billing workload and p95 result. |
 | QA3 | 10,000 customers ≤10 minutes; kill/restart with no duplicate invoice | Pending evidence | Restart-safe chunk/partition billing job and kill/restart integration test are not yet demonstrated. |
 | QA4 | Configuration-only plan; new charge type without changing existing strategy classes | Partial | Strategy interface and registry tests exist; configuration-driven persisted plan integration and instructor-defined extension demo remain. |
-| QA5 | One-call invoice-line traceability; estimate within 1% of final | Partial | Invoice lines expose pricing explanation; event provenance and estimate-vs-final reconciliation test remain. |
+| QA5 | One-call invoice-line traceability; estimate within 1% of final | Partial | Invoice lines now expose source event IDs/count and pricing explanation; estimate-vs-final <=1% reconciliation test remains. |
 
 ## D. Code updates included in this revision
 
@@ -57,6 +57,13 @@
 3. Corrected the frontend ingestion notice to display the backend's actual `rejected` response field.
 4. Enforced customer ownership for usage summary/estimate and invoice/invoice-line reads; admin reads remain unrestricted.
 4. Added this master criteria matrix and supporting architecture, evidence, process and defence documents.
+
+## V10 implementation update (2026-11-15)
+- QA5: invoice lines now store the source usage-event IDs and event count used to calculate the line. `InvoiceLineProvenanceTest` checks this contract. A production database migration for the new columns must be included before production rollout.
+- C4: added `CorrelationIdFilter` to propagate `X-Correlation-ID` and expose it in SLF4J MDC.
+- C7: added `MINI-ATAM.md` with six quality scenarios, trade-offs, sensitivity points and architectural risks.
+- C9: added `QUALITY-ACCEPTANCE-RUNBOOK.md` with exact QA1–QA5 evidence procedures. No benchmark results are claimed.
+- Updated requirements traceability and evidence folder guidance.
 
 ## E. Release gate
 

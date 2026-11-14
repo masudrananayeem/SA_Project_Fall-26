@@ -85,3 +85,7 @@ If `charges` is omitted or empty, the legacy flat fee + per-unit + allowance + m
 - `GET /api/late-adjustments?customerId=acme&period=2026-10` lists pending late events; `POST /api/invoices/late-adjustments/run?customerId=acme&period=2026-10` creates a separate adjustment invoice record and marks those ledger entries invoiced.
 
 - `POST /api/catalogue/plans/{planKey}/migrate-active?fromVersion=1` migrates active subscriptions pinned to the specified version to the latest version and writes a plan-change audit record. It intentionally does not post a price delta.
+
+
+## Invoice-line traceability (V10)
+`GET /api/invoices/{invoiceId}/lines` returns `sourceEventIdsJson` and `sourceEventCount` for billable usage lines. The IDs identify the persisted usage-event rows used for the metric quantity. This is an audit aid; verify that the production database has applied the corresponding schema update before deployment.

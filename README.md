@@ -162,3 +162,12 @@ The backend now includes prepaid credit balances and credit notes, budget thresh
 
 ## V9 deployment and security notes
 See [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) for local Docker setup, PostgreSQL persistence, backup, and hosted deployment guidance. Production must use the `prod` profile and externally managed secrets; the sample credentials are local-demo-only. See [`docs/V9-CHANGELOG.md`](docs/V9-CHANGELOG.md) and [`docs/CRITERIA-MASTER-STATUS.md`](docs/CRITERIA-MASTER-STATUS.md) for updated scope and honest verification status. A configured CI workflow is present, but it is not represented as passing until it runs.
+
+
+## V10 update
+- Invoice lines now retain source usage-event IDs and event count for billing traceability.
+- Request correlation IDs are propagated in `X-Correlation-ID` and SLF4J MDC.
+- Added a mini-ATAM and reproducible QA1–QA5 acceptance runbook.
+- See `docs/V10-CHANGELOG.md` and `docs/CRITERIA-MASTER-STATUS.md` for honest implementation status.
+
+**Release warning:** This remains a course development build, not a production-certified billing service. Execute Maven/CI, Docker, frontend build and QA benchmarks. A complete Flyway baseline, restartable chunk-oriented billing, production identity, and webhook SSRF hardening remain release gates. C10 requires the instructor's actual change request; C12 requires the live defence.
