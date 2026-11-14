@@ -89,3 +89,10 @@ If `charges` is omitted or empty, the legacy flat fee + per-unit + allowance + m
 
 ## Invoice-line traceability (V10)
 `GET /api/invoices/{invoiceId}/lines` returns `sourceEventIdsJson` and `sourceEventCount` for billable usage lines. The IDs identify the persisted usage-event rows used for the metric quantity. This is an audit aid; verify that the production database has applied the corresponding schema update before deployment.
+
+
+## Paginated collection endpoints (V11)
+To avoid unbounded collection responses, paginated endpoints are available without removing the original compatibility routes:
+- `GET /api/subscriptions/page?page=0&size=20`
+- `GET /api/invoices/page?page=0&size=20&customerId=<customer>`
+Page size is limited to 100. Customer accounts are scoped to their authenticated username; administrators can query all records or a selected customer. Spring Data page metadata is returned with the content.

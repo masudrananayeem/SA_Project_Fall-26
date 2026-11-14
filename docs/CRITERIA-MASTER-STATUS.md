@@ -14,7 +14,7 @@
 |---|---|---|---|
 | C1 | Technology, configuration, one-command local deployment, resource budget | Improved / pending verification | Compose has PostgreSQL+Redis+backend+frontend, persistent `pgdata`, health-gated dependencies and 5 GiB aggregate memory ceilings. Clean-machine startup and 8 GiB host verification remain unrun. See `DEPLOYMENT.md`. |
 | C2 | Typed, validated configuration; profiles; no committed secrets | Partial | Dev/test/prod profile files now exist; prod requires environment secrets and uses Hibernate `validate`. Typed `@ConfigurationProperties`, secret-manager integration and complete migration provisioning remain. |
-| C3 | API validation, consistent errors, pagination, auth and authorization | Improved / partial | Subscription lists and plan-change history now enforce customer scope; invoices, usage, credits and budgets have ownership checks. Admin operations remain role-protected. Pagination, persistent identity, API contract tests and webhook tenant self-service remain. |
+| C3 | API validation, consistent errors, pagination, auth and authorization | Improved / partial | Subscription lists and plan-change history now enforce customer scope; invoices, usage, credits and budgets have ownership checks. Admin operations remain role-protected. Paginated `/api/subscriptions/page` and `/api/invoices/page` routes are now available (max 100); persistent identity, API contract tests and webhook tenant self-service remain. |
 | C4 | Structured logs, metrics, traces, correlation IDs and health | Partial | Actuator health/metrics and UTC timestamps are configured. Correlation propagation is now implemented with `X-Correlation-ID` and SLF4J MDC; JSON logging, tracing exporter and dashboard evidence remain. |
 | C5 | Unit, integration, architecture, security and CI tests | Improved / pending verification | GitHub Actions workflow now runs Maven verify and frontend build. Unit/architecture tests and Testcontainers dependencies exist; workflow execution and real integration coverage are not yet verified. |
 | C6 | Architecture verification and modular boundaries | Pending evidence | Spring Modulith module verification test exists; CI must demonstrate it passes in a supported JDK/Maven environment. |
@@ -117,3 +117,10 @@ Do not mark the project submission-ready until all remaining FRs are implemented
 ## V9 verification record
 - ZIP integrity and source-level XML/YAML/JSON syntax checks are the only local static checks recorded for this delivery.
 - Maven, Docker and frontend production build were not executed in this environment. All tests and QA1–QA5 performance acceptance remain **pending evidence** until run on a configured machine/CI runner.
+
+
+## V11 implementation update (2026-11-15)
+- C3: added paginated subscription and invoice collection endpoints; legacy list routes remain for existing frontend compatibility. Page size is capped at 100 and customer data remains tenant-scoped.
+- C2 / deployment: added production security checklist and explicit database migration procedure. Production profile requires environment-provided secrets; the demo in-memory user store is still not production identity.
+- Database: added an additive PostgreSQL SQL migration for V10 invoice provenance columns and backup/deploy instructions. This is not a complete Flyway baseline.
+- Release gates unchanged: real Spring Batch restart/recovery, complete Flyway baseline, persistent OIDC/JWT identity, webhook DNS-rebinding/egress hardening, actual CI/test execution and QA benchmark evidence.
