@@ -8,13 +8,15 @@ import java.util.*;
 @Service
 public class PricingService {
  private final ObjectMapper mapper;
- public PricingService(){this(new ObjectMapper());}\n public PricingService(ObjectMapper mapper){this.mapper=mapper;}
- public BigDecimal calculate(Plan p,BigDecimal quantity){
+ public PricingService(){this(new ObjectMapper());}
+ public PricingService(ObjectMapper mapper){this.mapper=mapper;}
+ public BigDecimal calculate(Plan p,BigDecimal quantity){ return calculate(p,quantity,BigDecimal.ONE); }
+ public BigDecimal calculate(Plan p,BigDecimal quantity,BigDecimal seats){
    BigDecimal total;
    if(p.getChargeDefinitionsJson()!=null && !p.getChargeDefinitionsJson().isBlank()){
      try {
        var definitions=mapper.readValue(p.getChargeDefinitionsJson(),new TypeReference<List<ChargeDefinition>>(){});
-       total=ChargeStrategies.calculate(definitions,quantity,BigDecimal.ONE);
+       total=ChargeStrategies.calculate(definitions,quantity,seats);
      } catch(Exception e){throw new IllegalStateException("Invalid charge definitions for plan "+p.getPlanKey(),e);}
    } else {
      BigDecimal billable=quantity.subtract(p.getFreeAllowance()).max(BigDecimal.ZERO);

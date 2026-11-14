@@ -22,15 +22,20 @@ public class UsageService {
     private final PricingService pricing;
     private final SubscriptionRepository subscriptions;
     private final PlanRepository plans;
+    private final LateUsageAdjustmentRepository lateAdjustments;
 
+    @org.springframework.beans.factory.annotation.Autowired
     public UsageService(UsageEventRepository repo, ObjectMapper mapper, PricingService pricing,
-                        SubscriptionRepository subscriptions, PlanRepository plans) {
+                        SubscriptionRepository subscriptions, PlanRepository plans, LateUsageAdjustmentRepository lateAdjustments) {
         this.repo = repo;
         this.mapper = mapper;
         this.pricing = pricing;
         this.subscriptions = subscriptions;
-        this.plans = plans;
+        this.plans = plans; this.lateAdjustments = lateAdjustments;
     }
+
+
+    public UsageService(UsageEventRepository repo,ObjectMapper mapper,PricingService pricing,SubscriptionRepository subscriptions,PlanRepository plans){this(repo,mapper,pricing,subscriptions,plans,null);}
 
     // Intentionally not wrapped in one transaction: each insert is independently committed so
     // a concurrent idempotency-key collision can be counted without rolling back the whole batch.
@@ -60,7 +65,8 @@ public class UsageService {
             }
             try {
                 String properties = mapper.writeValueAsString(event.properties() == null ? Map.of() : event.properties());
-                repo.saveAndFlush(new UsageEvent(event.customerId(), event.metric(), event.quantity(), event.timestamp(), event.idempotencyKey(), properties));
+                UsageEvent saved=repo.saveAndFlush(new UsageEvent(event.customerId(), event.metric(), event.quantity(), event.timestamp(), event.idempotencyKey(), properties));
+                if(lateAdjustments!=null){YearMonth period=YearMonth.from(event.timestamp().atZone(ZoneOffset.UTC));Instant close=period.plusMonths(1).atDay(1).atStartOfDay(ZoneOffset.UTC).toInstant();if(now.isAfter(close)){lateAdjustments.save(new LateUsageAdjustment(saved.getId(),event.customerId(),period.toString()));}}
                 accepted++;
             } catch (DataIntegrityViolationException duplicateRace) {
                 // The database unique constraint is the final authority under concurrent requests.

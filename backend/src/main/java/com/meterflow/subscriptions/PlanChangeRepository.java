@@ -1,0 +1,1 @@
+package com.meterflow.subscriptions;import org.springframework.data.jpa.repository.JpaRepository;import java.util.*;public interface PlanChangeRepository extends JpaRepository<PlanChange,UUID>{List<PlanChange> findBySubscriptionIdOrderByEffectiveDateDesc(UUID id);}

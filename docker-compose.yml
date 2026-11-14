@@ -6,6 +6,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-meterflow}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-meterflow_local_password}
     ports: ["5432:5432"]
+    mem_limit: 2g
     volumes: ["pgdata:/var/lib/postgresql/data"]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-meterflow} -d ${POSTGRES_DB:-meterflow}"]
@@ -15,9 +16,16 @@ services:
   redis:
     image: redis:7-alpine
     ports: ["6379:6379"]
+    mem_limit: 512m
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
   backend:
     build: ./backend
     environment:
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev}
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-meterflow}
       SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-meterflow}
       SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-meterflow_local_password}
@@ -27,12 +35,14 @@ services:
       CUSTOMER_PASSWORD: ${CUSTOMER_PASSWORD:-meterflow-customer}
       SPRING_DATA_REDIS_HOST: redis
     ports: ["8080:8080"]
+    mem_limit: 2g
     depends_on:
       postgres: { condition: service_healthy }
-      redis: { condition: service_started }
+      redis: { condition: service_healthy }
   frontend:
     build: ./frontend
     ports: ["5173:80"]
+    mem_limit: 512m
     depends_on: [backend]
 volumes:
   pgdata:

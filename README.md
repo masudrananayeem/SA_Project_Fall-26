@@ -142,3 +142,23 @@ The backend now includes prepaid credit balances and credit notes, budget thresh
 - Plan creation accepts optional `charges` definitions; configured charge strategies are now evaluated by the production pricing service rather than existing only as isolated strategy classes.
 - `charges` can include `flat_fee`, `per_unit`, `per_seat`, `package`, `volume_tier`, and `graduated_tier`. If omitted, the legacy flat + per-unit + free allowance + minimum commitment calculation is retained.
 - Remaining limitations are tracked in `docs/CRITERIA-MASTER-STATUS.md`.
+
+
+### V7 updates
+- Added pending late-usage adjustment ledger entries and an admin query endpoint.
+- Added subscription seat count, trial end, scheduled plan changes, daily scheduled-change activation, immediate proration audit history, and seat-aware pricing.
+- Added plan tax-rate configuration, tax calculation in invoice runs, trial proration, and read-only invoice simulation (`GET /api/invoices/simulate?customerId=...&period=YYYY-MM`).
+- Successful mock payments now mark invoices PAID and publish `payment.succeeded`.
+- Automatic late-adjustment invoice generation and complete restartable batch billing remain open.
+
+
+### V8 updates
+- Late events accepted during the 72-hour post-period-close grace period now create a persistent adjustment-ledger entry. Admins can list pending entries and generate a separate invoice-adjustment record; duplicate processing is prevented by moving ledger entries to INVOICED.
+- Subscription supports trial end, seat count, scheduled plan changes (daily activation), immediate plan changes with remaining-period proration audit, and plan-change history.
+- Per-seat pricing receives the subscription seat count. Plan-level tax rates are configurable and applied to invoice totals.
+- Historical invoice simulation is available without persisting an invoice. Successful mock payment marks the invoice PAID and publishes a webhook.
+- Still not represented as complete: Spring Batch restart/partition billing, real PSP integration, instructor change request, performance benchmark evidence, and full end-to-end test execution.
+
+
+## V9 deployment and security notes
+See [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) for local Docker setup, PostgreSQL persistence, backup, and hosted deployment guidance. Production must use the `prod` profile and externally managed secrets; the sample credentials are local-demo-only. See [`docs/V9-CHANGELOG.md`](docs/V9-CHANGELOG.md) and [`docs/CRITERIA-MASTER-STATUS.md`](docs/CRITERIA-MASTER-STATUS.md) for updated scope and honest verification status. A configured CI workflow is present, but it is not represented as passing until it runs.

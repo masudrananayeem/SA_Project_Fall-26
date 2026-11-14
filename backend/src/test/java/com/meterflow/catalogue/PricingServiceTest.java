@@ -21,6 +21,12 @@ class PricingServiceTest {
   var plan=new Plan("configured",1,"Configured","BDT",BigDecimal.ZERO,BigDecimal.ZERO,"api_calls",BigDecimal.ZERO,BigDecimal.ZERO,mapper.writeValueAsString(definitions));
   assertEquals(new BigDecimal("200.00"),new PricingService(mapper).calculate(plan,new BigDecimal("120")));
  }
+ @Test void calculatesPerSeatChargeUsingSeatQuantity() throws Exception {
+  var mapper=new ObjectMapper();var defs=List.of(new ChargeDefinition("per_seat","Seats",new BigDecimal("12"),BigDecimal.ZERO,BigDecimal.ONE,List.of()));
+  var plan=new Plan("seat",1,"Seat Plan","BDT",BigDecimal.ZERO,BigDecimal.ZERO,"api_calls",BigDecimal.ZERO,BigDecimal.ZERO,mapper.writeValueAsString(defs));
+  assertEquals(new BigDecimal("60.00"),new PricingService(mapper).calculate(plan,BigDecimal.ZERO,new BigDecimal("5")));
+ }
+
  @Test void rejectsUnknownChargeTypes() {
   var definitions=List.of(new ChargeDefinition("mystery","Unknown",BigDecimal.ONE,BigDecimal.ZERO,BigDecimal.ONE,List.of()));
   assertThrows(IllegalArgumentException.class,()->com.meterflow.catalogue.charges.ChargeStrategies.calculate(definitions,BigDecimal.ONE,BigDecimal.ONE));

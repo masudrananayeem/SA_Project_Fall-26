@@ -73,3 +73,15 @@ Example:
 }
 ```
 If `charges` is omitted or empty, the legacy flat fee + per-unit + allowance + minimum commitment calculation is retained. `per_seat` currently uses one seat until seat quantities are modelled at subscription level.
+
+
+## V7 subscription, tax, simulation and late adjustment APIs
+- `POST /api/subscriptions` accepts optional `seatCount` and `trialEnd`.
+- `POST /api/subscriptions/{id}/schedule-plan-change` schedules a plan change; the daily lifecycle job applies it on/after the effective date.
+- `POST /api/subscriptions/{id}/change-plan` immediately changes plan and records a remaining-period proration delta; `GET /api/subscriptions/{id}/plan-changes` returns its audit history.
+- `POST /api/subscriptions/{id}/seats?count=5` changes the billable seat count.
+- Plan creation accepts `taxRate` as a percentage from 0 to 100.
+- `GET /api/invoices/simulate?customerId=acme&period=2026-10` previews historical billing without writing an invoice.
+- `GET /api/late-adjustments?customerId=acme&period=2026-10` lists pending late events; `POST /api/invoices/late-adjustments/run?customerId=acme&period=2026-10` creates a separate adjustment invoice record and marks those ledger entries invoiced.
+
+- `POST /api/catalogue/plans/{planKey}/migrate-active?fromVersion=1` migrates active subscriptions pinned to the specified version to the latest version and writes a plan-change audit record. It intentionally does not post a price delta.

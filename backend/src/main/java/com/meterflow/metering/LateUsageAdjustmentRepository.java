@@ -1,0 +1,1 @@
+package com.meterflow.metering;import org.springframework.data.jpa.repository.JpaRepository;import java.util.*;public interface LateUsageAdjustmentRepository extends JpaRepository<LateUsageAdjustment,UUID>{List<LateUsageAdjustment> findByCustomerIdAndBillingPeriodAndStatus(String customer,String period,String status);}
