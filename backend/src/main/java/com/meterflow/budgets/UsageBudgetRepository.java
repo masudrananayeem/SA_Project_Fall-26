@@ -1,1 +1,1 @@
-package com.meterflow.budgets;import org.springframework.data.jpa.repository.JpaRepository;import java.util.*;public interface UsageBudgetRepository extends JpaRepository<UsageBudget,UUID>{Optional<UsageBudget> findByCustomerIdAndPeriod(String c,String p);}
+package com.meterflow.budgets;import org.springframework.data.jpa.repository.JpaRepository;import java.util.*;public interface UsageBudgetRepository extends JpaRepository<UsageBudget,UUID>{Optional<UsageBudget> findByCustomerIdAndPeriod(String c,String p); List<UsageBudget> findByPeriod(String period);}

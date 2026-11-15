@@ -9,4 +9,12 @@ class ChargeStrategiesTest {
  @Test void perSeatUsesSeatCount(){var d=new ChargeDefinition("per_seat","Seat",n("120"),null,null,null);assertEquals(n("360.00"),ChargeStrategies.calculate(List.of(d),n("0"),n("3")));}
  @Test void graduatedTierPricesEachBandSeparately(){var d=new ChargeDefinition("graduated_tier","API",n("0"),null,null,List.of(new ChargeDefinition.Tier(n("100"),n("1")),new ChargeDefinition.Tier(n("200"),n("0.8")),new ChargeDefinition.Tier(null,n("0.5"))));assertEquals(n("205.00"),ChargeStrategies.calculate(List.of(d),n("250"),n("0")));}
  @Test void volumeTierUsesOneRateForAllUnits(){var d=new ChargeDefinition("volume_tier","API",n("0"),null,null,List.of(new ChargeDefinition.Tier(n("100"),n("1")),new ChargeDefinition.Tier(null,n("0.8"))));assertEquals(n("200.00"),ChargeStrategies.calculate(List.of(d),n("250"),n("0")));}
+ @Test void rejectsTierDefinitionsWithoutAnUnboundedFinalTier(){
+  var d=new ChargeDefinition("volume_tier","API",n("0"),null,null,List.of(new ChargeDefinition.Tier(n("100"),n("1"))));
+  assertThrows(IllegalArgumentException.class,()->ChargeStrategies.calculate(List.of(d),n("50"),n("1")));
+ }
+ @Test void rejectsNegativeUsage(){
+  var d=new ChargeDefinition("per_unit","API",n("1"),null,null,null);
+  assertThrows(IllegalArgumentException.class,()->ChargeStrategies.calculate(List.of(d),n("-1"),n("1")));
+ }
 }

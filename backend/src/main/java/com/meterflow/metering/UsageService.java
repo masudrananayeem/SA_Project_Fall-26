@@ -110,6 +110,23 @@ public class UsageService {
         return Map.of("customerId", customer, "eventCount", events.size(), "usage", totals, "periodStart", start, "asOf", end);
     }
 
+    public Map<String, Object> estimate(String customer, String period) {
+        YearMonth ym;
+        try { ym = YearMonth.parse(period); } catch (Exception ex) { throw new IllegalArgumentException("period must be YYYY-MM"); }
+        var active = subscriptions.findTopByCustomerIdAndStatusOrderByPeriodStartDesc(customer, "ACTIVE");
+        if (active.isEmpty()) return Map.of("customerId", customer, "estimatedAmount", "0.00", "currency", "BDT", "period", period, "note", "No active subscription; estimate is usage-only.");
+        var subscription = active.get();
+        var plan = plans.findById(subscription.getPlanId()).orElseThrow(() -> new IllegalStateException("Subscription references a missing plan"));
+        Instant from = ym.atDay(1).atStartOfDay(ZoneOffset.UTC).toInstant();
+        Instant to = ym.plusMonths(1).atDay(1).atStartOfDay(ZoneOffset.UTC).toInstant();
+        var source = repo.findMetricWindow(customer, plan.getMetric(), from, to);
+        BigDecimal quantity = source.stream().map(UsageEvent::getQuantity).reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal amount = pricing.calculate(plan, quantity, BigDecimal.valueOf(subscription.getSeatCount()));
+        return Map.of("customerId", customer, "period", period, "eventCount", source.size(), "billableMetric", plan.getMetric(),
+                "billableQuantity", quantity, "estimatedAmount", amount, "currency", plan.getCurrency(),
+                "plan", plan.getPlanKey() + " v" + plan.getVersion(), "asOf", Instant.now());
+    }
+
     public Map<String, Object> estimate(String customer) {
         var summary = summary(customer);
         var active = subscriptions.findTopByCustomerIdAndStatusOrderByPeriodStartDesc(customer, "ACTIVE");

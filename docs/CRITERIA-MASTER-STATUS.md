@@ -29,13 +29,13 @@
 
 | ID | Requirement | Updated status | Implemented / remaining |
 |---|---|---|---|
-| FR1 | Batch ingestion ≤1,000, idempotency, late events up to 72h after close | Partial | Batch validation, unique idempotency key, period-close-based 72h acceptance and late-usage adjustment ledger exist. Automatic adjustment-to-next-invoice workflow and QA1-scale proof remain. |
+| FR1 | Batch ingestion ≤1,000, idempotency, late events up to 72h after close | Partial | Batch validation, unique idempotency key, period-close-based 72h acceptance and late-usage adjustment ledger exist. Late adjustments are currently recorded as separate adjustment records, not automatically merged into a next-cycle invoice; QA1-scale proof remains. |
 | FR2 | sum/count/max/unique/latest + property filters | Implemented (source-level) | Aggregation endpoint/service supports the required operations and property filters; unit and endpoint-logic tests are present. Execution evidence still belongs in CI. |
-| FR3 | flat, per-unit, graduated, volume, package, per-seat, allowance, minimum, BDT/USD | Partial | Six strategy types are persisted/evaluated and subscription seats are passed to pricing. Mixed-charge allowance/minimum composition and exhaustive currency/tier boundary tests remain. |
+| FR3 | flat, per-unit, graduated, volume, package, per-seat, allowance, minimum, BDT/USD | Improved / partial | Six strategy types are persisted/evaluated; negative quantities/amounts and malformed or unbounded tier definitions are rejected. Allowance semantics across multiple charge components and exhaustive BDT/USD boundary tests remain. |
 | FR4 | create, upgrade/downgrade, proration, pause/resume/cancel, trials | Improved / partial | Added idempotent daily trial-expiry transition alongside scheduled plan changes. Full period-boundary billing/proration, overlapping subscriptions and lifecycle integration tests remain. |
 | FR5 | draft/final invoice, explainable lines and configured tax | Partial | Draft/finalise, pricing lines and plan tax rate exist. Restartable Spring Batch billing, event-level provenance is now stored on invoice lines; estimate-vs-final reconciliation remains. |
 | FR6 | prepaid credits, credit notes, late adjustments | Partial | Prepaid balance, top-up, credit notes, invoice credit application and late-usage adjustment ledger exist. Refund/reversal/dispute lifecycle and automatic late-adjustment invoice integration remain. |
-| FR7 | live estimate, budgets, 50/80/100 alerts, ≤1-minute refresh | Partial | Budget persistence, threshold dedupe and webhook alerts implemented; email/SMS and independent refresh worker remain. |
+| FR7 | live estimate, budgets, 50/80/100 alerts, ≤1-minute refresh | Improved / partial | Budget persistence, threshold dedupe and webhook alerts implemented; current-period budgets now refresh every five minutes and estimate by requested period. The assignment’s ≤1-minute target, concurrency and end-to-end delivery still need measured verification. |
 | FR8 | mock payment failure, retries days 1/3/7, state transitions, notifications | Improved / partial | Retry worker now pauses an active subscription after the day-7 terminal failure and reactivates a paused subscription on recorded payment success; webhook state notices remain. Scheduler/provider integration tests and exact day-boundary acceptance remain. |
 | FR9 | HMAC webhook, retries/backoff, delivery logs, manual replay | Partial | HMAC-SHA256 outbound delivery, durable logs, retry/backoff and replay implemented; security hardening and end-to-end tests remain. |
 | FR10 | immutable plan versions, subscriptions pinned, migration, historical simulator | Partial | Plan migration and historical simulation endpoints exist. Immutable pricing snapshots, dry-run migration diff and faithful replay across historical versions remain. |
@@ -166,3 +166,14 @@ Do not mark the project submission-ready until all remaining FRs are implemented
 | Cloudflare/Vercel | Deployment configuration prepared | Requires user's Cloudflare/Vercel accounts, secrets, domain, paid Container entitlement and live smoke tests. |
 
 Do not describe this ZIP as fully accepted or production deployed until every pending acceptance item is executed and evidence retained. C10 (instructor change request) and C12 (live defence) cannot be completed by source-code changes.
+
+
+## V17 implementation update (2026-11-16)
+- FR7: added a scheduled current-period budget refresh (default every 5 minutes, configurable) with per-budget exception isolation. Threshold notifications remain persisted/deduplicated at 50%, 80%, and 100%.
+- FR7: added period-scoped usage estimation so evaluating a budget for a given `YYYY-MM` uses that month's events rather than silently reusing the current-month estimate.
+- FR3: hardened the pricing strategy registry against negative quantities/seats/amounts, missing definitions, malformed tier prices/bounds and tier schedules without an unbounded final tier; added regression tests.
+- FR8 test compatibility: exposed the persisted dunning case creation timestamp used by the retry schedule assertions.
+- Verification limitation: Maven is not installed in the build container and the prior package-manager installation timed out; Docker is unavailable. Java is present, but no claim is made that Maven tests, PostgreSQL integration, frontend production build, k6 benchmarks or deployment passed.
+
+## V17 release status
+V17 is a further implementation revision, **not a fully accepted submission**. FR1, FR3–FR10 and QA1–QA5 still have outstanding implementation or execution gates documented above. C10 and C12 remain external dependencies.
