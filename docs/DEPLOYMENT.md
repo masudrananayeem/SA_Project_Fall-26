@@ -132,3 +132,23 @@ Frontend: push changes to the connected Git branch; Vercel builds automatically.
 - Cloudflare container deployment: https://developers.cloudflare.com/containers/guides/deploy/
 - Vercel Vite deployment: https://vercel.com/docs/frameworks/frontend/vite
 - Vite environment variable security: https://vite.dev/guide/env-and-mode
+
+## V14 local helper scripts
+
+From a PowerShell terminal in the project root:
+
+```powershell
+.\scripts\check-local-prerequisites.ps1
+.\scripts\run-local.ps1
+.\scripts\stop-local.ps1
+```
+
+The run script creates `.env` from `.env.example` only when it does not already exist, then builds and starts the Compose stack. It does not delete the PostgreSQL volume when stopping.
+
+## V14 partitioned billing
+
+For the Spring Batch architecture demonstration, use `POST /api/invoices/batch/run?period=YYYY-MM` as ADMIN. The job shards active customer IDs across partitions, processes chunks of 25 and records reader checkpoints plus job/step execution metadata in the Spring Batch repository. Test a failed execution restart with the same period parameter before claiming QA3. Do not use the synchronous legacy billing endpoint for the 10,000-customer benchmark.
+
+## Production database warning
+
+The production Hibernate setting is `ddl-auto: validate`. A fresh managed PostgreSQL database must have the full MeterFlow domain schema provisioned before deploying the application. V14 does not yet include a complete Flyway baseline migration; do not switch production to Hibernate `update` as a substitute. Spring Batch metadata table initialization is not the domain schema migration.

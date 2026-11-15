@@ -5,7 +5,10 @@
   "scripts": {
     "cf:dev": "wrangler dev",
     "cf:deploy": "wrangler deploy",
-    "cf:types": "wrangler types"
+    "cf:types": "wrangler types",
+    "local:up": "powershell -ExecutionPolicy Bypass -File scripts/run-local.ps1",
+    "local:down": "powershell -ExecutionPolicy Bypass -File scripts/stop-local.ps1",
+    "local:check": "powershell -ExecutionPolicy Bypass -File scripts/check-local-prerequisites.ps1"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "latest",

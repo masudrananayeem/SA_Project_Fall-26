@@ -124,3 +124,11 @@ Do not mark the project submission-ready until all remaining FRs are implemented
 - C2 / deployment: added production security checklist and explicit database migration procedure. Production profile requires environment-provided secrets; the demo in-memory user store is still not production identity.
 - Database: added an additive PostgreSQL SQL migration for V10 invoice provenance columns and backup/deploy instructions. This is not a complete Flyway baseline.
 - Release gates unchanged: real Spring Batch restart/recovery, complete Flyway baseline, persistent OIDC/JWT identity, webhook DNS-rebinding/egress hardening, actual CI/test execution and QA benchmark evidence.
+
+
+## V14 implementation update (2026-11-16)
+- FR2: added authenticated `GET /api/usage/aggregate` with sum, count, maximum, unique_count and latest_value operations, exact property filters, distinct-property selection, and a bounded 366-day query window. Added service-level test for filtering.
+- QA3 / Spring Batch focus: added chunk-oriented (25 customer items per chunk), partitioned customer billing job, restart-aware customer reader, worker step and ADMIN-only `/api/invoices/batch/run` endpoint. Each customer partition executes its own transactional billing operation; invoice uniqueness prevents duplicate customer-period invoices. This is implementation evidence only: 10,000-customer runtime, forced termination, restart and exactly-once reconciliation are still pending execution.
+- Existing synchronous `/api/invoices/run` remains for backwards compatibility and small local demonstrations.
+- Production profile now initializes Spring Batch metadata tables when absent. This does not replace the still-required complete Flyway baseline for all MeterFlow domain tables.
+- No QA1/QA2/QA3/QA5 pass is claimed without measured raw evidence.

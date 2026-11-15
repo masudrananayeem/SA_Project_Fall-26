@@ -11,7 +11,7 @@ presence, not acceptance-test success.
 | FR2 | `metering/aggregation/MetricAggregation` | Partial: aggregation utility exists; configured definitions are not wired end-to-end into billing. |
 | FR3 | `catalogue/Plan`, `PricingService`, `catalogue/charges` | Partial: six charge types are configurable in plan JSON; allowance/minimum composition and strategy extension acceptance remain. |
 | FR4 | `subscriptions/Subscription`, `SubscriptionLifecycleService` | Partial: basic lifecycle, trial date, seats, scheduled change and proration audit exist; automatic lifecycle and billing integration remain. |
-| FR5 | `invoicing/BillingService`, `InvoiceBuilder`, `InvoiceLine` | Partial: invoice workflow exists; billing is not a restartable Spring Batch job. |
+| FR5 | `invoicing/BillingService`, `InvoiceBuilder`, `InvoiceLine` | Partial: invoice workflow exists and V14 adds a chunk-oriented partitioned Spring Batch job with a restart-aware customer reader; crash/restart acceptance remains pending. |
 | FR6 | `credits/CreditService`, `CreditAccount`, `CreditNote` | Partial: prepaid credit and credit-note foundation exists; full correction/reversal and late adjustment integration remain. |
 | FR7 | `metering/UsageService`, `budgets/BudgetService` | Partial: estimate and threshold logic exist; cache freshness and final-invoice parity are unproven. |
 | FR8 | `payments/DunningService`, `DunningCase` | Partial: retry state model exists; scheduler, notifications and enforcement require integration tests. |
@@ -19,7 +19,7 @@ presence, not acceptance-test success.
 | FR10 | `catalogue/Plan`, `subscriptions/SubscriptionLifecycleService`, `invoicing/BillingService` | Partial: version records, migration and simulation exist; immutable snapshots and arbitrary historical replay remain. |
 | QA1 | ingestion + adjustment ledger | Pending independent 1M-event reconciliation and zero-duplicate evidence. |
 | QA2 | `performance/ingest.js` | Pending actual p95 ≤100 ms benchmark under concurrent billing. |
-| QA3 | invoice unique constraint | Not met until restartable partitioned Spring Batch and 10k-customer kill/restart test exist. |
+| QA3 | invoice unique constraint | Pending evidence: restartable partitioned Spring Batch source is present in V14; 10k-customer kill/restart and exactly-once reconciliation still must be executed. |
 | QA4 | `catalogue/charges` | Partial: configured existing types exist; instructor-defined new strategy demonstration remains. |
 | QA5 | `InvoiceLine` provenance | Partial: source IDs/count stored; one-call full pricing explanation and ≤1% estimate parity test remain. |
 

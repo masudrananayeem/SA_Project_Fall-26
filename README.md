@@ -97,7 +97,7 @@ See `docs/CRITERIA-MASTER-STATUS.md` for the complete C1–C12, FR1–FR10 and Q
 - Corrects the frontend rejected-event count to match the backend response contract.
 - Adds C4 architecture diagrams, a 15-minute defence plan and an honest AI/process log template.
 
-These changes improve the foundation but do **not** complete all requirements. In particular, credits, dunning, tax configuration, Spring Batch restartability, full charge-strategy persistence, budget alerts, outbound webhook delivery/replay, plan simulation and QA benchmark evidence remain open. Ownership checks now protect the customer usage and invoice read routes; other resource ownership coverage and pagination remain open. See the master matrix for exact status.
+These changes improve the foundation but do **not** complete all requirements. In particular, remaining gaps include complete Flyway baseline, production OIDC/JWT identity, webhook SSRF hardening, automatic late-adjustment application, full historical plan simulation, and QA benchmark evidence. The V14 partitioned chunk-oriented Spring Batch job and metric aggregation endpoint are now included in source. Ownership checks now protect the customer usage and invoice read routes; other resource ownership coverage and pagination remain open. See the master matrix for exact status.
 
 ## Architecture and course deliverables
 
@@ -114,7 +114,7 @@ These changes improve the foundation but do **not** complete all requirements. I
 
 ## Honest implementation status
 
-This is an improved course-project foundation, **not yet a fully verified production billing system**. Some critical assignment criteria remain incomplete: late-event adjustment handling, DB-race-safe idempotent ingestion, complete plan JSON persistence, subscription proration/trials/scheduled changes, tax configuration, real Spring Batch chunk/partition/restart flow, credit ledger/credit notes, budget threshold notifications, dunning retry scheduler, signed/replayable webhook delivery, historical plan simulator, and measured QA1–QA3/QA5 evidence. The exact status is maintained in `docs/REQUIREMENTS-TRACEABILITY.md`.
+This is an improved course-project foundation, **not yet a fully verified production billing system**. Some critical assignment criteria remain incomplete: complete late-event adjustment automation, full historical plan simulation, production identity, webhook SSRF hardening, complete Flyway baseline, and measured QA1–QA3/QA5 evidence. V14 now contains a chunk-oriented partitioned Spring Batch billing job, a restart-aware customer reader, and the filtered metric aggregation endpoint; these still require compilation and crash/restart testing on the target environment. The exact status is maintained in `docs/REQUIREMENTS-TRACEABILITY.md`.
 
 Do not submit QA targets as achieved until you have run the corresponding tests and retained the raw evidence. The project deliberately documents these gaps instead of fabricating results.
 
@@ -157,7 +157,7 @@ The backend now includes prepaid credit balances and credit notes, budget thresh
 - Subscription supports trial end, seat count, scheduled plan changes (daily activation), immediate plan changes with remaining-period proration audit, and plan-change history.
 - Per-seat pricing receives the subscription seat count. Plan-level tax rates are configurable and applied to invoice totals.
 - Historical invoice simulation is available without persisting an invoice. Successful mock payment marks the invoice PAID and publishes a webhook.
-- Still not represented as complete: Spring Batch restart/partition billing, real PSP integration, instructor change request, performance benchmark evidence, and full end-to-end test execution.
+- Still not represented as complete: full QA benchmark evidence, instructor change request, live defence, and production-grade identity/security hardening. Spring Batch job source has been added in V14 but still needs execution evidence.
 
 
 ## V9 deployment and security notes
@@ -170,7 +170,7 @@ See [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) for local Docker setup, PostgreSQ
 - Added a mini-ATAM and reproducible QA1–QA5 acceptance runbook.
 - See `docs/V10-CHANGELOG.md` and `docs/CRITERIA-MASTER-STATUS.md` for honest implementation status.
 
-**Release warning:** This remains a course development build, not a production-certified billing service. Execute Maven/CI, Docker, frontend build and QA benchmarks. A complete Flyway baseline, restartable chunk-oriented billing, production identity, and webhook SSRF hardening remain release gates. C10 requires the instructor's actual change request; C12 requires the live defence.
+**Release warning:** This remains a course development build, not a production-certified billing service. Execute Maven/CI, Docker, frontend build and QA benchmarks. A complete Flyway baseline, verified Spring Batch crash/restart behavior, production identity, webhook SSRF hardening, and QA benchmark evidence remain release gates. C10 requires the instructor's actual change request; C12 requires the live defence.
 
 
 ## V12 assignment audit (16 Nov 2026)
@@ -195,3 +195,9 @@ release gates in the audit are completed.
 - Current requirement status: [`docs/V12-ASSIGNMENT-COMPLIANCE-AUDIT.md`](docs/V12-ASSIGNMENT-COMPLIANCE-AUDIT.md)
 
 The Cloudflare deployment adapter is under `cloudflare/` with root `wrangler.jsonc`. It runs the existing Java 21 Spring Boot Docker image using Cloudflare Containers; it is not a JavaScript rewrite. A complete Flyway baseline and production identity provider remain release blockers.
+
+
+## V14 additions
+- Filterable metric aggregation endpoint: `/api/usage/aggregate`.
+- Partitioned Spring Batch billing endpoint: `POST /api/invoices/batch/run?period=YYYY-MM` (ADMIN).
+- See `docs/LOCAL-RUN-AND-TEST.md` for local startup, API smoke tests, batch restart guidance and QA evidence procedures.

@@ -84,6 +84,22 @@ public class UsageService {
         return result;
     }
 
+    public Map<String,Object> aggregate(String customer, String metric, Instant from, Instant to, String operation, Map<String,String> filters, String distinctProperty) {
+        if (from == null || to == null || !from.isBefore(to)) throw new IllegalArgumentException("from must be before to");
+        if (Duration.between(from, to).compareTo(Duration.ofDays(366)) > 0) throw new IllegalArgumentException("Aggregation window cannot exceed 366 days");
+        var samples = repo.findMetricWindow(customer, metric, from, to).stream().map(event -> {
+            Map<String,Object> properties;
+            try { properties = event.getPropertiesJson() == null ? Map.of() : mapper.readValue(event.getPropertiesJson(), new com.fasterxml.jackson.core.type.TypeReference<Map<String,Object>>() {}); }
+            catch (Exception ex) { properties = Map.of(); }
+            String distinct = distinctProperty == null || distinctProperty.isBlank() ? null : String.valueOf(properties.get(distinctProperty));
+            return new com.meterflow.metering.aggregation.MetricAggregation.Sample(event.getQuantity(), properties, distinct, event.getTimestamp());
+        }).toList();
+        BigDecimal value = com.meterflow.metering.aggregation.MetricAggregation.aggregate(operation, samples, filters == null ? Map.of() : filters);
+        return Map.of("customerId", customer, "metric", metric, "aggregation", operation, "value", value,
+                "matchedEventCount", samples.stream().filter(sample -> (filters == null ? Map.<String,String>of() : filters).entrySet().stream().allMatch(f -> Objects.equals(String.valueOf(sample.properties().get(f.getKey())), f.getValue()))).count(),
+                "from", from, "to", to, "filters", filters == null ? Map.of() : filters);
+    }
+
     public Map<String, Object> summary(String customer) {
         Instant start = LocalDate.now(ZoneOffset.UTC).withDayOfMonth(1).atStartOfDay(ZoneOffset.UTC).toInstant();
         Instant end = Instant.now();

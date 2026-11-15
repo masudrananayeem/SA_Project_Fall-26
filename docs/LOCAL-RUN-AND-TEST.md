@@ -125,6 +125,7 @@ Use Swagger UI for request schemas and the remaining API operations. Recommended
 8. Run billing once; run it again for the same period and confirm no second invoice is created.
 9. Inspect invoice lines and provenance endpoint to verify source event counts/IDs.
 10. Test pause/resume/cancel, credits, budget thresholds, dunning retries and webhook replay through Swagger.
+11. For partitioned billing, use `POST /api/invoices/batch/run?period=YYYY-MM` as ADMIN. It shards customer IDs across worker partitions and processes them in chunks of 25. If a job fails, retry with the same period so Spring Batch can restart the failed JobInstance; if it completed, use a new period or inspect the existing invoice set rather than expecting a second run.
 
 Do not use real customer data for the demo. Use a dedicated test customer and a non-production database.
 
@@ -132,7 +133,7 @@ Do not use real customer data for the demo. Use a dedicated test customer and a 
 
 - QA1: generate exactly 1,000,000 events with 3% duplicate submissions and 2% late arrivals. Compare invoice totals and event inclusion against an independent SQL/Python recomputation; assert no event is billed twice. Save generator seed, input manifest, output and reconciliation report.
 - QA2: run `performance/ingest.js` against the deployed API with a controlled load profile; record throughput and p50/p95/p99 latency while a billing run executes. Do not report a pass until p95 is at most 100 ms at 2,000 events/sec.
-- QA3: run billing for 10,000 customers, terminate the process during the run, restart and verify every customer has exactly one invoice and all partitions/chunks complete. Current implementation still needs the restartable Spring Batch job before this can pass.
+- QA3: run billing for 10,000 customers, terminate the process during the run, restart and verify every customer has exactly one invoice and all partitions/chunks complete. A partitioned Spring Batch job is now present in source; the 10,000-customer kill/restart acceptance test and its raw evidence still must be executed before QA3 can pass.
 - QA4: create a new plan using existing charge definitions without changing Java code; for the instructor's new charge type, implement it through an extension point and add contract tests proving existing strategies remain unchanged.
 - QA5: call invoice-line provenance API and verify event count/price rule. Compare live estimates to final invoice for identical events and assert absolute relative error <= 1%.
 
@@ -146,3 +147,15 @@ Keep raw logs, CSV/JSON outputs, environment details and commit hash under `docs
 - Frontend shows 401: open Settings and enter the correct API username/password. Clear stale values by clearing site local storage.
 - Frontend cannot reach API: verify `VITE_API_URL` and the backend health endpoint.
 - Maven tests fail on Testcontainers: confirm Docker is running and has enough memory.
+
+
+## 9. Metric aggregation API (FR2)
+
+`GET /api/usage/aggregate` accepts `customerId`, `metric`, `from`, `to`, `operation` (`sum`, `count`, `maximum`, `unique_count`, `latest_value`), optional `distinctProperty`, and optional URL-encoded JSON `filters`. Example:
+
+```powershell
+$filters = [uri]::EscapeDataString('{"region":"ap-south"}')
+Invoke-RestMethod "http://localhost:8080/api/usage/aggregate?customerId=customer&metric=api_calls&from=2026-11-01T00:00:00Z&to=2026-12-01T00:00:00Z&operation=sum&filters=$filters" -Headers $headers
+```
+
+The aggregation window is limited to 366 days. Property filters use exact string matching. `unique_count` counts distinct values of `distinctProperty`.

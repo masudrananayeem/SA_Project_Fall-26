@@ -13,7 +13,7 @@ spring:
     job:
       enabled: false
     jdbc:
-      initialize-schema: never
+      initialize-schema: always
   data:
     redis:
       host: ${SPRING_DATA_REDIS_HOST}

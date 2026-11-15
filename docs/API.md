@@ -96,3 +96,9 @@ To avoid unbounded collection responses, paginated endpoints are available witho
 - `GET /api/subscriptions/page?page=0&size=20`
 - `GET /api/invoices/page?page=0&size=20&customerId=<customer>`
 Page size is limited to 100. Customer accounts are scoped to their authenticated username; administrators can query all records or a selected customer. Spring Data page metadata is returned with the content.
+
+
+## Additional V14 endpoints
+
+- `GET /api/usage/aggregate`: filtered sum/count/maximum/unique_count/latest_value over a metric window. Parameters: `customerId`, `metric`, `from`, `to`, `operation`; optional `filters` (URL-encoded JSON object) and `distinctProperty`. Customer ownership rules apply.
+- `POST /api/invoices/batch/run?period=YYYY-MM`: ADMIN-only partitioned Spring Batch billing run. It shards active customer IDs across worker partitions and processes them in chunks of 25 using a restart-aware reader. Each customer-period operation is transactional. Spring Batch job metadata enables failed-job restart with the same parameters; the invoice unique constraint remains the final duplicate guard.

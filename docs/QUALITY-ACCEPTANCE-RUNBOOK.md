@@ -22,7 +22,7 @@ Run `k6 run performance/ingest.js` against the target deployment. Configure a 2,
 3. Terminate the backend during the run, restart it, and resume the same period.
 4. Reconcile customer-period invoices and invoice totals against an independent oracle.
 5. Pass only if completion <= 10 minutes, every eligible customer has exactly one invoice, and no customer is silently skipped.
-The current implementation still needs chunk-oriented restartable Spring Batch before this test can pass reliably.
+V14 includes a chunk-oriented partitioned Spring Batch job with a checkpointed customer reader. Execute the forced-termination/restart scenario at 10,000 customers and retain the raw evidence before claiming QA3.
 
 ## QA4 — extensibility
 Create a new plan using only existing configured charge definitions and show its price calculation. Then implement one genuinely new `ChargeStrategy` in a separate class, register it, and run its boundary tests. Record which files changed. Configuration-only plan creation and code-level strategy extension are distinct acceptance demonstrations.
