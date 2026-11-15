@@ -186,3 +186,12 @@ was added. Maven, Docker, frontend build and performance acceptance tests were
 not executable in the preparation environment; no test or QA benchmark is
 claimed as passed. This remains an academic development build until the
 release gates in the audit are completed.
+
+
+## Run locally and deploy
+
+- Local setup and testing: [`docs/LOCAL-RUN-AND-TEST.md`](docs/LOCAL-RUN-AND-TEST.md)
+- Cloudflare Containers backend + Vercel frontend: [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md)
+- Current requirement status: [`docs/V12-ASSIGNMENT-COMPLIANCE-AUDIT.md`](docs/V12-ASSIGNMENT-COMPLIANCE-AUDIT.md)
+
+The Cloudflare deployment adapter is under `cloudflare/` with root `wrangler.jsonc`. It runs the existing Java 21 Spring Boot Docker image using Cloudflare Containers; it is not a JavaScript rewrite. A complete Flyway baseline and production identity provider remain release blockers.

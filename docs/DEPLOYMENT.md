@@ -1,35 +1,134 @@
-# MeterFlow — local database and deployment guide
+# MeterFlow — local, Cloudflare Containers and Vercel deployment
 
-## Local development (recommended for the course demo)
+## Deployment topology
 
-1. Install Docker Desktop and start it.
-2. Copy `.env.example` to `.env` in the repository root.
-3. Keep the sample values only for local development. Change the passwords before exposing any port outside your machine.
-4. Run `docker compose up --build`.
-5. Open the frontend at `http://localhost:5173`, API at `http://localhost:8080`, and Swagger at `http://localhost:8080/swagger-ui.html`.
+- React + Vite frontend: Vercel static deployment (`frontend/`).
+- Spring Boot Java 21 API: Cloudflare Containers, reached through a small Cloudflare Worker gateway (`cloudflare/index.ts`).
+- Database: managed PostgreSQL (Neon, Supabase or another PostgreSQL provider).
+- Redis: managed Redis (Upstash or another provider) if enabled/required by the selected environment.
 
-PostgreSQL runs in the `postgres` container. Its database is `meterflow` and its named Docker volume is `pgdata`; data survives container recreation. Redis is a separate cache/service container and is not the system of record. To stop: `docker compose down`. To remove the database volume too (DESTRUCTIVE): `docker compose down -v`.
+**Important platform note:** a Spring Boot JVM application is not deployed as plain Workers JavaScript. The Cloudflare adapter runs the existing Spring Boot Docker image using Cloudflare Containers. Cloudflare Containers are a Workers Paid feature; a Docker-compatible build environment is required when building the image from the Dockerfile. The included configuration is a single-container starter deployment, not a horizontally scaled production billing cluster.
 
-The Compose memory ceilings are PostgreSQL 2 GiB, backend 2 GiB, Redis 512 MiB and frontend 512 MiB (5 GiB total ceiling, leaving headroom within an 8 GiB host). These are container limits, not a measured performance result.
+## A. Local run first
 
-## Suggested hosted deployment
+Follow `docs/LOCAL-RUN-AND-TEST.md`. Do not deploy until the local frontend, backend health endpoint, Swagger UI and basic billing scenario work.
 
-- Frontend: Vercel or Cloudflare Pages. Set `VITE_API_URL` to the public backend origin (no `/api` suffix).
-- Backend: Render, Railway, Fly.io or a comparable Java 21 container host. Set `SPRING_PROFILES_ACTIVE=prod`, `SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME`, `SPRING_DATASOURCE_PASSWORD`, `SPRING_DATA_REDIS_HOST`, `SPRING_DATA_REDIS_PORT`, `ADMIN_USERNAME`, `ADMIN_PASSWORD`, `CUSTOMER_USERNAME`, and `CUSTOMER_PASSWORD` as platform secrets.
-- Database: managed PostgreSQL (Neon, Supabase, Render PostgreSQL, etc.). Enable SSL according to the provider's connection string and keep backups enabled.
-- Redis: managed Redis (e.g. Upstash or provider Redis) if required by the selected host.
+## B. Prepare the hosted database
 
-Never put database credentials or backend admin secrets in `VITE_*` variables: Vite values are shipped to the browser. Do not deploy the sample credentials. The production profile disables Hibernate schema auto-update and uses `ddl-auto: validate`; provision the schema through a reviewed migration before enabling it. A complete Flyway migration set is still a release task, so a fresh hosted database is not yet a one-click production deployment.
+1. Create a PostgreSQL database with a provider that allows secure external connections from Cloudflare Containers.
+2. Copy the provider's JDBC URL, username and password. Prefer TLS/SSL and a least-privilege database user.
+3. Create a Redis database if the chosen application profile requires Redis. Record host and port; keep its password/TLS settings according to the provider.
+4. **Schema blocker:** the repository currently has no complete Flyway baseline. Production profile uses `ddl-auto=validate`; a brand-new empty database will fail to start. Do not switch production to `ddl-auto=update` to bypass this. Before production, generate and review a complete schema migration from the current entity model, apply it to the hosted database, and verify backup/restore. The existing V10 SQL file is only an additive invoice-provenance migration, not a full baseline.
 
-## Database backup
+## C. Deploy backend on Cloudflare Containers
 
-For local backup: `docker compose exec -T postgres pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB" > meterflow-backup.sql` (load `.env` in the shell first). Restore only after confirming the target database. For hosted environments, use the provider's automated backup/PITR features and test a restore.
+Prerequisites:
 
-## Deployment checklist
+- Cloudflare account with Workers Paid plan and Containers access.
+- Docker Desktop running locally (or use Cloudflare Workers Builds with the repository connected).
+- Node.js/npm installed.
+- A provisioned PostgreSQL schema as described above.
 
-- [ ] Replace every sample password with long unique secrets.
-- [ ] Configure HTTPS and restrictive CORS at the hosting layer/API.
-- [ ] Provision schema migrations and verify `ddl-auto=validate` startup.
-- [ ] Configure database SSL, backups, restore test and retention.
-- [ ] Set a real customer identity provider; current in-memory users are demo credentials, not multi-tenant production identity.
-- [ ] Run CI, integration tests, smoke tests and load tests against the deployed configuration.
+From the MeterFlow repository root:
+
+```powershell
+npm install
+npx wrangler login
+npx wrangler types
+```
+
+Set each secret. Run each command and paste the value when prompted; do not commit secrets:
+
+```powershell
+npx wrangler secret put SPRING_DATASOURCE_URL
+npx wrangler secret put SPRING_DATASOURCE_USERNAME
+npx wrangler secret put SPRING_DATASOURCE_PASSWORD
+npx wrangler secret put ADMIN_USERNAME
+npx wrangler secret put ADMIN_PASSWORD
+npx wrangler secret put CUSTOMER_USERNAME
+npx wrangler secret put CUSTOMER_PASSWORD
+npx wrangler secret put SPRING_DATA_REDIS_HOST
+npx wrangler secret put SPRING_DATA_REDIS_PORT
+npx wrangler secret put SPRING_DATA_REDIS_PASSWORD
+npx wrangler secret put SPRING_DATA_REDIS_SSL_ENABLED
+npx wrangler secret put METERFLOW_CORS_ALLOWED_ORIGINS
+```
+
+For `METERFLOW_CORS_ALLOWED_ORIGINS`, enter the exact Vercel production origin, e.g. `https://your-meterflow.vercel.app` (no trailing slash). If you use a custom domain, include that exact origin too, comma-separated. Do not use `*` with authenticated APIs. For a TLS-enabled managed Redis provider, set `SPRING_DATA_REDIS_SSL_ENABLED=true` and enter its password; use an empty password only when the provider does not require one.
+
+Deploy:
+
+```powershell
+npx wrangler deploy
+npx wrangler containers list
+npx wrangler containers images list
+```
+
+The first deployment can take several minutes while Cloudflare builds/publishes the container image and provisions the instance. Check Cloudflare Workers & Pages → Containers logs and health. Test:
+
+```powershell
+Invoke-RestMethod https://meterflow-api.<YOUR_WORKERS_SUBDOMAIN>.workers.dev/healthz
+Invoke-RestMethod https://meterflow-api.<YOUR_WORKERS_SUBDOMAIN>.workers.dev/actuator/health
+```
+
+The first URL checks the Worker gateway; the second checks Spring Boot and its database. Swagger should be at `/swagger-ui.html` or `/swagger-ui/index.html` depending on Springdoc routing.
+
+### Cloudflare deployment caveats
+
+- Container outbound Internet access is enabled because the Java service must reach managed PostgreSQL/Redis. Restrict database network access where possible and use TLS.
+- The Worker routes requests to one named Durable Object/container instance. This is intended as a course/demo deployment. It does not satisfy QA2/QA3 scale targets by itself.
+- Keep the API URL private until the production schema, authentication, CORS, backups and load tests are reviewed.
+- For reliable long-running billing and scheduled work, ensure the container lifecycle and job execution model are explicitly tested. Do not assume a container remains permanently warm.
+
+## D. Deploy frontend on Vercel
+
+1. Push the repository to GitHub.
+2. In Vercel, choose **Add New → Project** and import the repository.
+3. Set **Root Directory** to `frontend`.
+4. Framework preset: **Vite**.
+5. Build command: `npm run build`.
+6. Output directory: `dist`.
+7. Add environment variable for Production and Preview as appropriate:
+
+```text
+VITE_API_URL=https://meterflow-api.<YOUR_WORKERS_SUBDOMAIN>.workers.dev
+```
+
+Do not add API usernames, passwords, database credentials or tokens as `VITE_*` variables. Those values are public in the generated frontend bundle. The user enters the Basic Auth account in the MeterFlow Settings page; the browser stores it in local storage for this demo.
+
+8. Deploy. After deployment, open the Vercel URL → Settings → enter the API username/password → Save API credentials.
+9. Verify dashboard data loads and browser developer tools show no CORS or network errors.
+
+Official Vercel Vite guide: https://vercel.com/docs/frameworks/frontend/vite
+
+## E. Update and redeploy
+
+Backend / Worker:
+
+```powershell
+npm install
+npx wrangler deploy
+```
+
+Frontend: push changes to the connected Git branch; Vercel builds automatically. Or install Vercel CLI and run `vercel --prod` from `frontend/`.
+
+## F. Release checklist
+
+- [ ] Full Flyway baseline created, reviewed and applied.
+- [ ] Hosted PostgreSQL backup and restore tested.
+- [ ] Managed Redis connectivity/TLS verified.
+- [ ] Unique production secrets stored as Cloudflare Worker secrets.
+- [ ] Exact Vercel origin configured in CORS secret.
+- [ ] No credentials embedded in frontend build.
+- [ ] Production authentication upgraded beyond shared in-memory demo users/HTTP Basic.
+- [ ] Cloudflare Container health, logs, restart and outbound DB connectivity verified.
+- [ ] CI, integration, security and load tests executed.
+- [ ] QA1–QA5 evidence captured; no unsupported pass claims.
+
+## Platform references
+
+- Cloudflare Containers overview: https://developers.cloudflare.com/containers/
+- Cloudflare Containers getting started: https://developers.cloudflare.com/containers/get-started/
+- Cloudflare container deployment: https://developers.cloudflare.com/containers/guides/deploy/
+- Vercel Vite deployment: https://vercel.com/docs/frameworks/frontend/vite
+- Vite environment variable security: https://vite.dev/guide/env-and-mode

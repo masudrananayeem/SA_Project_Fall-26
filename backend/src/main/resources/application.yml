@@ -29,3 +29,5 @@ meterflow:
     admin-password: ${ADMIN_PASSWORD:meterflow-admin}
     customer-user: ${CUSTOMER_USERNAME:customer}
     customer-password: ${CUSTOMER_PASSWORD:meterflow-customer}
+  cors:
+    allowed-origins: ${METERFLOW_CORS_ALLOWED_ORIGINS:http://localhost:5173}

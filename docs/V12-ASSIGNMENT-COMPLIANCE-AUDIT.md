@@ -101,3 +101,10 @@ Then execute the procedures in `QUALITY-ACCEPTANCE-RUNBOOK.md`. Save raw logs an
 8. **Course-dependent:** instructor's C10 change request and C12 live defence.
 
 **Submission warning:** V12 is an improved and more accurately audited project archive, not a fully verified completion of every FR/QA/course criterion. Do not submit the QA targets as achieved until the required tests have actually passed.
+
+
+## V13 deployment additions (16 November 2026)
+
+- Cloudflare Containers Worker gateway, Wrangler configuration, Vercel environment guidance and local PowerShell run/test instructions were added.
+- CORS is now configurable through `METERFLOW_CORS_ALLOWED_ORIGINS`; the frontend no longer has default Basic Auth credentials embedded through `VITE_*` variables and provides a Settings credential entry.
+- These are deployment-path improvements, not proof of full production security or QA1–QA5. Full Flyway baseline, OIDC/JWT identity, Spring Batch restartability and benchmark evidence remain outstanding.

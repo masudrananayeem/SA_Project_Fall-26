@@ -1,7 +1,7 @@
 const API = import.meta.env.VITE_API_URL || '';
 const credentials = () => {
-  const username = localStorage.getItem('mf_user') || import.meta.env.VITE_API_USERNAME || '';
-  const password = localStorage.getItem('mf_pass') || import.meta.env.VITE_API_PASSWORD || '';
+  const username = localStorage.getItem('mf_user') || '';
+  const password = localStorage.getItem('mf_pass') || '';
   return username && password ? 'Basic ' + btoa(`${username}:${password}`) : '';
 };
 export async function api<T>(path:string, init:RequestInit={}):Promise<T>{

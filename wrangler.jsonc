@@ -1,0 +1,26 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "meterflow-api",
+  "main": "cloudflare/index.ts",
+  "compatibility_date": "2026-11-16",
+  "containers": [
+    {
+      "class_name": "MeterFlowApiContainer",
+      "scheduling_policy": "durable_object",
+      "images": {
+        "base": { "dockerfile": "./backend/Dockerfile" }
+      }
+    }
+  ],
+  "durable_objects": {
+    "bindings": [
+      { "name": "METERFLOW_API", "class_name": "MeterFlowApiContainer" }
+    ]
+  },
+  "exports": {
+    "MeterFlowApiContainer": {
+      "type": "durable-object",
+      "storage": "sqlite"
+    }
+  }
+}
