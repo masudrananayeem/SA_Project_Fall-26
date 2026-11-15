@@ -30,13 +30,13 @@
 | ID | Requirement | Updated status | Implemented / remaining |
 |---|---|---|---|
 | FR1 | Batch ingestion ≤1,000, idempotency, late events up to 72h after close | Partial | Batch validation, unique idempotency key, period-close-based 72h acceptance and late-usage adjustment ledger exist. Automatic adjustment-to-next-invoice workflow and QA1-scale proof remain. |
-| FR2 | sum/count/max/unique/latest + property filters | Partial | Standalone aggregation utility and unit tests exist. Production query/metric definitions and aggregation-to-invoice wiring remain. |
+| FR2 | sum/count/max/unique/latest + property filters | Implemented (source-level) | Aggregation endpoint/service supports the required operations and property filters; unit and endpoint-logic tests are present. Execution evidence still belongs in CI. |
 | FR3 | flat, per-unit, graduated, volume, package, per-seat, allowance, minimum, BDT/USD | Partial | Six strategy types are persisted/evaluated and subscription seats are passed to pricing. Mixed-charge allowance/minimum composition and exhaustive currency/tier boundary tests remain. |
-| FR4 | create, upgrade/downgrade, proration, pause/resume/cancel, trials | Partial | Trial end, seat count, scheduled plan changes, immediate prorated plan changes and history exist. Trial conversion/expiry worker and scheduled change billing lifecycle remain. |
+| FR4 | create, upgrade/downgrade, proration, pause/resume/cancel, trials | Improved / partial | Added idempotent daily trial-expiry transition alongside scheduled plan changes. Full period-boundary billing/proration, overlapping subscriptions and lifecycle integration tests remain. |
 | FR5 | draft/final invoice, explainable lines and configured tax | Partial | Draft/finalise, pricing lines and plan tax rate exist. Restartable Spring Batch billing, event-level provenance is now stored on invoice lines; estimate-vs-final reconciliation remains. |
 | FR6 | prepaid credits, credit notes, late adjustments | Partial | Prepaid balance, top-up, credit notes, invoice credit application and late-usage adjustment ledger exist. Refund/reversal/dispute lifecycle and automatic late-adjustment invoice integration remain. |
 | FR7 | live estimate, budgets, 50/80/100 alerts, ≤1-minute refresh | Partial | Budget persistence, threshold dedupe and webhook alerts implemented; email/SMS and independent refresh worker remain. |
-| FR8 | mock payment failure, retries days 1/3/7, state transitions, notifications | Partial | Persisted dunning case, day 1/3/7 schedule, state transitions and webhook notices exist. Real provider adapter, scheduler verification and subscription/access suspension propagation remain. |
+| FR8 | mock payment failure, retries days 1/3/7, state transitions, notifications | Improved / partial | Retry worker now pauses an active subscription after the day-7 terminal failure and reactivates a paused subscription on recorded payment success; webhook state notices remain. Scheduler/provider integration tests and exact day-boundary acceptance remain. |
 | FR9 | HMAC webhook, retries/backoff, delivery logs, manual replay | Partial | HMAC-SHA256 outbound delivery, durable logs, retry/backoff and replay implemented; security hardening and end-to-end tests remain. |
 | FR10 | immutable plan versions, subscriptions pinned, migration, historical simulator | Partial | Plan migration and historical simulation endpoints exist. Immutable pricing snapshots, dry-run migration diff and faithful replay across historical versions remain. |
 
@@ -128,7 +128,41 @@ Do not mark the project submission-ready until all remaining FRs are implemented
 
 ## V14 implementation update (2026-11-16)
 - FR2: added authenticated `GET /api/usage/aggregate` with sum, count, maximum, unique_count and latest_value operations, exact property filters, distinct-property selection, and a bounded 366-day query window. Added service-level test for filtering.
-- QA3 / Spring Batch focus: added chunk-oriented (25 customer items per chunk), partitioned customer billing job, restart-aware customer reader, worker step and ADMIN-only `/api/invoices/batch/run` endpoint. Each customer partition executes its own transactional billing operation; invoice uniqueness prevents duplicate customer-period invoices. This is implementation evidence only: 10,000-customer runtime, forced termination, restart and exactly-once reconciliation are still pending execution.
+- QA3 / Spring Batch focus: added partitioned customer billing job, worker step and ADMIN-only `/api/invoices/batch/run` endpoint. Each customer partition executes its own transactional billing operation; invoice uniqueness prevents duplicate customer-period invoices. This is implementation evidence only: 10,000-customer runtime, forced termination, restart and exactly-once reconciliation are still pending execution.
 - Existing synchronous `/api/invoices/run` remains for backwards compatibility and small local demonstrations.
 - Production profile now initializes Spring Batch metadata tables when absent. This does not replace the still-required complete Flyway baseline for all MeterFlow domain tables.
 - No QA1/QA2/QA3/QA5 pass is claimed without measured raw evidence.
+
+
+## V15 implementation update (2026-11-16)
+- QA3 architecture: replaced the V14 one-customer tasklet partition with up to eight customer partitions, a checkpointed `ItemStreamReader`, chunk size 25, and a chunk writer. Each chunk commits through the Spring Batch transaction manager; `BillingService.runCustomer` joins the chunk transaction. The unique `(customer_id, period)` constraint remains the final duplicate guard. Added a reader checkpoint/resume unit test. **This does not prove the 10,000-customer/10-minute or kill/restart acceptance until run.**
+- Database: added Flyway V1 clean-install PostgreSQL baseline for all current domain entities and enabled Flyway plus Hibernate schema validation in production. The migration is for a fresh database; existing V14 databases need a separately reviewed migration and cannot be blindly adopted. Spring Batch metadata tables are initialized by Boot's Batch initializer.
+- Security: production profile now uses OAuth2 Resource Server JWT validation with an external OIDC issuer; local/dev keeps demo HTTP Basic. JWT `sub` must equal customer ID and `roles` must contain `ADMIN` or `CUSTOMER`. Frontend Settings accepts a bearer token for manual testing; full OIDC browser login/PKCE is not included.
+- Webhooks: production requires HTTPS, an exact hostname allowlist, rejects IP literals and non-public DNS answers, and does not follow redirects. DNS answer checking is not socket-level DNS pinning; a controlled egress proxy/firewall is still required for strong DNS-rebinding protection.
+- QA2 k6 workload corrected to 200 requests/sec × 10 events = 2,000 submitted events/sec and includes p95 <=100ms and error-rate thresholds. No benchmark has been run.
+- Cloudflare configuration now passes OIDC and webhook allowlist settings into the container and declares a SQLite Durable Object migration. No Cloudflare or Vercel deployment has been executed from this environment.
+
+## V15 final audit status (honest release gate)
+| Requirement | V15 code status | Acceptance still requiring external execution/input |
+|---|---|---|
+| FR1 | Partial | 72h late ledger exists; automatic next-invoice late adjustment and 1M-event proof remain. |
+| FR2 | Implemented in aggregation API | Verify property filter semantics and connect aggregation definitions to all billing calculations. |
+| FR3 | Partial | Six charge strategies exist; verify mixed-charge allowance/minimum semantics and all boundaries. |
+| FR4 | Partial | Subscription operations/trial/scheduled change exist; automatic trial conversion/expiry and lifecycle integration need completion. |
+| FR5 | Partial | Draft/finalise and provenance exist; invoice lines still need full per-charge/tax breakdown and reconciliation. |
+| FR6 | Partial | Credits/notes/late ledger exist; automatic late adjustment invoice integration and reversal lifecycle remain. |
+| FR7 | Partial | Estimate/budget thresholds exist; refresh within one minute and estimate parity require measured tests. |
+| FR8 | Partial | Dunning state schedule exists; retry scheduler, notifications and subscription suspension/reactivation need end-to-end verification. |
+| FR9 | Partial | HMAC/log/retry/replay and production host allowlist exist; socket-level DNS pinning/egress enforcement and receiver tests remain. |
+| FR10 | Partial | Versioning/migration/simulator exist; immutable snapshots and faithful arbitrary historical version replay need completion. |
+| QA1 | Pending evidence | 1M-event oracle reconciliation and zero-double-bill proof. |
+| QA2 | Pending evidence | Run corrected k6 workload concurrently with billing on documented hardware; capture p95 <=100ms. |
+| QA3 | Implemented, pending acceptance | Run 10k customers, <=10 minutes, kill/restart and reconcile no duplicates. |
+| QA4 | Partial | Instructor-defined new charge type and configuration-only demonstration. |
+| QA5 | Partial / pending evidence | One-call provenance is present; <=1% estimate/final reconciliation is not proven. |
+| Flyway | Implemented for clean install | Test V1 against a fresh PostgreSQL instance and plan migration for any existing V14 data. |
+| Production OIDC/JWT | Implemented as resource-server integration | Configure issuer, claim mapping, keys, real tokens and verify access rules. No OIDC provider/account supplied. |
+| Webhook SSRF | Improved, not fully closed | Production allowlist and DNS checks exist; deploy network egress proxy/firewall to pin destination IP. |
+| Cloudflare/Vercel | Deployment configuration prepared | Requires user's Cloudflare/Vercel accounts, secrets, domain, paid Container entitlement and live smoke tests. |
+
+Do not describe this ZIP as fully accepted or production deployed until every pending acceptance item is executed and evidence retained. C10 (instructor change request) and C12 (live defence) cannot be completed by source-code changes.

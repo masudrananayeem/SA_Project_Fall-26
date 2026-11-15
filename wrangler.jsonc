@@ -12,6 +12,7 @@
       }
     }
   ],
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["MeterFlowApiContainer"] }],
   "durable_objects": {
     "bindings": [
       { "name": "METERFLOW_API", "class_name": "MeterFlowApiContainer" }

@@ -17,6 +17,6 @@ This is a preparation plan, not evidence that a live defence has occurred.
 - Why a modular monolith instead of microservices?
 - How does the database unique constraint protect against concurrent duplicate ingestion?
 - Why are billing periods represented as half-open intervals `[start, end)`?
-- What happens if a billing run is interrupted? (Explain the V14 chunk-oriented partitioned Spring Batch job, checkpointed customer reader and unique invoice constraint. Do not claim QA3 passes until the 10,000-customer forced-restart integration test is executed.)
+- What happens if a billing run is interrupted? (Do not claim restartability until Spring Batch job and integration test exist.)
 - How are historical prices protected from later plan edits?
 - Which QA targets have measured evidence, and on what hardware?

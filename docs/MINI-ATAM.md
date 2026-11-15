@@ -38,7 +38,7 @@ This lightweight Architecture Tradeoff Analysis Method (ATAM) evaluates the curr
 
 ## Sensitivity points and risks
 - Billing transaction duration and the number of events loaded per customer are highly sensitive to customer count and usage volume.
-- V14 now includes a chunk-oriented partitioned Spring Batch job with a checkpointed customer reader. QA3 remains unproven until the 10,000-customer forced termination/restart test is executed.
+- The current billing loop is not a restartable chunk-oriented Spring Batch job; QA3 remains unproven.
 - Schema evolution is not production-ready until a complete Flyway baseline and forward migrations are supplied.
 - Webhook delivery requires SSRF controls (DNS pinning/revalidation, redirect blocking, egress policy) before public exposure.
 - In-memory demo users are not a production identity store.

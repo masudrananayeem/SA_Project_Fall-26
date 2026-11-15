@@ -1,18 +1,15 @@
-# Database migration policy
+# Database migrations (V15)
 
-## Current state
-- Local development currently uses Hibernate `ddl-auto: update`.
-- Production profile uses `ddl-auto: validate`; it will not silently mutate the schema.
-- V10 adds two columns to `invoice_lines`. Apply `db/V10-invoice-provenance.sql` to an existing V9 database before deploying V10.
-- The SQL is additive and has defaults so existing invoice lines remain readable.
+## Fresh production database
+The production profile uses Flyway and Hibernate `ddl-auto: validate`. A clean PostgreSQL database is initialized from `backend/src/main/resources/db/migration/V1__meterflow_baseline.sql`. Spring Batch metadata tables are initialized by Spring Boot Batch schema initialization. Never use Hibernate `update` in production.
 
-## Safe deployment sequence
-1. Take a PostgreSQL backup (`pg_dump -Fc ... > meterflow-before-v10.dump`).
-2. Test restore the backup into a staging database.
-3. Apply `psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f docs/db/V10-invoice-provenance.sql`.
-4. Deploy backend V10 with `SPRING_PROFILES_ACTIVE=prod`.
-5. Verify `/actuator/health`, invoice list and invoice-line endpoints.
-6. Keep the pre-deploy backup until rollback window expires.
+1. Create an empty PostgreSQL database and a restricted application user.
+2. Back up any existing database before migration work.
+3. Deploy with `SPRING_PROFILES_ACTIVE=prod`; Flyway validates and applies V1 before Hibernate validates the entity model.
+4. Verify `flyway_schema_history`, application tables, Spring Batch metadata tables and `/actuator/health`.
 
-## Important limitation
-A complete Flyway baseline for every existing entity/table has not yet been generated and validated. Do not enable Flyway against a populated database until a baseline migration and migration test are prepared. This V10 SQL is a focused additive migration, not a claim that full Flyway migration management is complete.
+## Existing V14 database
+V1 is a clean-install baseline, not an automatic conversion script for an already-populated V14 database. Do not point V15 production at an existing database and expect Flyway to adopt it automatically. First clone the database, compare every table/column/index against V1 and the JPA entities, prepare a reviewed forward migration, and test restore/rollback. Baseline an existing database only after its schema has been independently proven equivalent.
+
+## Rollback
+Flyway migrations are forward-only. Restore the pre-deploy PostgreSQL backup or apply a separately reviewed compensating migration. Keep backups until the rollback window expires.

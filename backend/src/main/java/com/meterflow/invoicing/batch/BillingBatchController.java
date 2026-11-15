@@ -3,6 +3,7 @@ package com.meterflow.invoicing.batch;
 import org.springframework.batch.core.Job;
 import org.springframework.batch.core.JobParametersBuilder;
 import org.springframework.batch.core.launch.JobLauncher;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import java.time.YearMonth;
@@ -23,6 +24,6 @@ public class BillingBatchController {
         var execution = launcher.run(billingJob, parameters);
         return Map.of("jobName", execution.getJobInstance().getJobName(), "executionId", execution.getId(),
                 "status", execution.getStatus().toString(), "period", period,
-                "message", "Partitioned customer billing execution recorded. Re-run with the same period only after a failed execution to request a restart.");
+                "message", "Partitioned customer billing job submitted. Re-run with the same period to restart a failed execution.");
     }
 }

@@ -101,4 +101,4 @@ Page size is limited to 100. Customer accounts are scoped to their authenticated
 ## Additional V14 endpoints
 
 - `GET /api/usage/aggregate`: filtered sum/count/maximum/unique_count/latest_value over a metric window. Parameters: `customerId`, `metric`, `from`, `to`, `operation`; optional `filters` (URL-encoded JSON object) and `distinctProperty`. Customer ownership rules apply.
-- `POST /api/invoices/batch/run?period=YYYY-MM`: ADMIN-only partitioned Spring Batch billing run. It shards active customer IDs across worker partitions and processes them in chunks of 25 using a restart-aware reader. Each customer-period operation is transactional. Spring Batch job metadata enables failed-job restart with the same parameters; the invoice unique constraint remains the final duplicate guard.
+- `POST /api/invoices/batch/run?period=YYYY-MM`: ADMIN-only partitioned Spring Batch billing run. It partitions active customers and delegates each partition to an idempotent customer-period invoice operation. Spring Batch job metadata enables failed-job restart with the same parameters; the invoice unique constraint remains the final duplicate guard.

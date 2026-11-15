@@ -14,7 +14,7 @@ Record: commit SHA, date/time (UTC), OS, CPU model/core count, RAM, Java version
 6. Store generator input, API response log, SQL reconciliation output and summary in `docs/quality-evidence/qa1/`.
 
 ## QA2 — throughput and latency
-Run `k6 run performance/ingest.js` against the target deployment. Configure a 2,000 events/sec arrival rate for the required test duration, while a billing run is active. Preserve the k6 JSON output and report p50/p90/p95/p99, error rate, accepted events/sec, DB CPU, memory and connection pool saturation. Pass only if p95 <= 100 ms and the agreed error budget is met.
+Run `k6 run performance/ingest.js` against the target deployment. The script submits 10 events per request at 200 requests/sec (2,000 submitted events/sec) and sets p95/error-rate thresholds. Run a separate billing job concurrently to meet the requirement for the required test duration, while a billing run is active. Preserve the k6 JSON output and report p50/p90/p95/p99, error rate, accepted events/sec, DB CPU, memory and connection pool saturation. Pass only if p95 <= 100 ms and the agreed error budget is met.
 
 ## QA3 — 10,000 customer billing and recovery
 1. Seed 10,000 active subscriptions and deterministic usage.
@@ -22,7 +22,7 @@ Run `k6 run performance/ingest.js` against the target deployment. Configure a 2,
 3. Terminate the backend during the run, restart it, and resume the same period.
 4. Reconcile customer-period invoices and invoice totals against an independent oracle.
 5. Pass only if completion <= 10 minutes, every eligible customer has exactly one invoice, and no customer is silently skipped.
-V14 includes a chunk-oriented partitioned Spring Batch job with a checkpointed customer reader. Execute the forced-termination/restart scenario at 10,000 customers and retain the raw evidence before claiming QA3.
+V15 now contains customer partitions, a checkpointed `ItemStreamReader`, chunk size 25 and invoice uniqueness. The 10,000-customer timing and forced-kill/restart acceptance still must be executed and retained as raw evidence.
 
 ## QA4 — extensibility
 Create a new plan using only existing configured charge definitions and show its price calculation. Then implement one genuinely new `ChargeStrategy` in a separate class, register it, and run its boundary tests. Record which files changed. Configuration-only plan creation and code-level strategy extension are distinct acceptance demonstrations.

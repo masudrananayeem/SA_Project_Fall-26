@@ -4,7 +4,7 @@ V14 is an additive upgrade over V13. Existing project modules, React UI, local D
 
 ## Implemented in source
 
-- Added a partitioned Spring Batch billing job: customer IDs sharded across partitions, with chunk-size 25 processing and a restart-aware customer ID reader; each customer-period billing operation is transactional.
+- Added a partitioned Spring Batch billing job: one partition per distinct active customer, with a transactional customer-period billing worker.
 - Added ADMIN-only `POST /api/invoices/batch/run?period=YYYY-MM`.
 - Kept the legacy synchronous `POST /api/invoices/run` route for compatibility and small demonstrations.
 - Added `GET /api/usage/aggregate` for sum, count, maximum, unique count and latest value, with exact event-property filters and a bounded date range.

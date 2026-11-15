@@ -147,8 +147,29 @@ The run script creates `.env` from `.env.example` only when it does not already 
 
 ## V14 partitioned billing
 
-For the Spring Batch architecture demonstration, use `POST /api/invoices/batch/run?period=YYYY-MM` as ADMIN. The job shards active customer IDs across partitions, processes chunks of 25 and records reader checkpoints plus job/step execution metadata in the Spring Batch repository. Test a failed execution restart with the same period parameter before claiming QA3. Do not use the synchronous legacy billing endpoint for the 10,000-customer benchmark.
+For the Spring Batch architecture demonstration, use `POST /api/invoices/batch/run?period=YYYY-MM` as ADMIN. The job partitions by active customer and records job/step execution metadata in the Spring Batch repository. Test a failed execution restart with the same period parameter before claiming QA3. Do not use the synchronous legacy billing endpoint for the 10,000-customer benchmark.
 
 ## Production database warning
 
 The production Hibernate setting is `ddl-auto: validate`. A fresh managed PostgreSQL database must have the full MeterFlow domain schema provisioned before deploying the application. V14 does not yet include a complete Flyway baseline migration; do not switch production to Hibernate `update` as a substitute. Spring Batch metadata table initialization is not the domain schema migration.
+
+
+## V15 production environment additions
+Set these Cloudflare Worker secrets before deploying the production profile:
+
+```powershell
+npx wrangler secret put METERFLOW_OIDC_ISSUER_URI
+npx wrangler secret put METERFLOW_WEBHOOK_ALLOWED_HOSTS
+npx wrangler secret put METERFLOW_CORS_ALLOWED_ORIGINS
+npx wrangler secret put SPRING_DATASOURCE_URL
+npx wrangler secret put SPRING_DATASOURCE_USERNAME
+npx wrangler secret put SPRING_DATASOURCE_PASSWORD
+npx wrangler secret put SPRING_DATA_REDIS_HOST
+npx wrangler secret put SPRING_DATA_REDIS_PORT
+npx wrangler secret put SPRING_DATA_REDIS_PASSWORD
+npx wrangler secret put SPRING_DATA_REDIS_SSL_ENABLED
+```
+
+Production no longer uses demo Basic Auth users. Configure an OIDC provider and issue JWTs with `sub` equal to the customer ID and a `roles` array. The V15 frontend Settings page accepts a bearer access token for manual demo/testing; a complete OIDC browser login/PKCE client is not bundled. Do not deploy production access tokens as Vercel `VITE_*` variables.
+
+`METERFLOW_WEBHOOK_ALLOWED_HOSTS` is a comma-separated exact hostname allowlist. Use only customer webhook domains you explicitly approve. The application rejects non-HTTPS endpoints in production, IP literals and DNS answers containing non-public addresses. For DNS-rebinding-safe enforcement, additionally route outbound webhook traffic through a controlled egress proxy/firewall that pins and filters destination IPs at connection time.

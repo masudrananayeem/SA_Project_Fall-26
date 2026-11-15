@@ -4,6 +4,8 @@ spring:
     url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/meterflow}
     username: ${SPRING_DATASOURCE_USERNAME:meterflow}
     password: ${SPRING_DATASOURCE_PASSWORD:meterflow_local_password}
+  flyway:
+    enabled: false
   jpa:
     hibernate: { ddl-auto: update }
     open-in-view: false

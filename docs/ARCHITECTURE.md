@@ -28,4 +28,4 @@ SaaS/API product operators configure plans and subscriptions. Customers send usa
 7. Invoice is finalised explicitly; mock payment can then be invoked.
 
 ## Reliability caveat
-A unique constraint prevents duplicate customer-period invoice records. V14 adds a chunk-oriented partitioned Spring Batch job with a checkpointed customer reader and an invoice uniqueness barrier. The job must still be proven under forced process termination; a durable outbox publisher and atomic insert-on-conflict ingestion remain additional hardening before production-grade exactly-once claims.
+A unique constraint prevents duplicate customer-period invoice records. A full restartable Spring Batch job, durable outbox publisher and atomic insert-on-conflict ingestion should be added and proven under process termination before treating this as production-grade exactly-once billing.

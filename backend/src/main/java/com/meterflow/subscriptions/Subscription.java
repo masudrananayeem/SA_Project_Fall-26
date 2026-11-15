@@ -11,7 +11,8 @@ import jakarta.persistence.*; import java.time.*; import java.util.*;
  public boolean isTrialing(){return trialEnd!=null && LocalDate.now().isBefore(trialEnd);}
  public void setSeatCount(int seats){if(seats<1)throw new IllegalArgumentException("Seat count must be at least one");seatCount=seats;}
  public void startTrial(LocalDate end){if(end==null||!end.isAfter(LocalDate.now()))throw new IllegalArgumentException("Trial end must be in the future");trialEnd=end;}
+ public boolean expireTrial(LocalDate today){if(trialEnd!=null&&!today.isBefore(trialEnd)){trialEnd=null;return true;}return false;}
  public void schedulePlanChange(UUID planId,LocalDate date){if(!date.isAfter(LocalDate.now()))throw new IllegalArgumentException("Scheduled change date must be in the future");scheduledPlanId=planId;scheduledChangeDate=date;}
  public boolean applyScheduledChange(LocalDate today){if(scheduledPlanId!=null&&scheduledChangeDate!=null&&!today.isBefore(scheduledChangeDate)){planId=scheduledPlanId;scheduledPlanId=null;scheduledChangeDate=null;return true;}return false;}
- public void changePlan(UUID p){if(!"ACTIVE".equals(status))throw new IllegalStateException("Only active subscriptions can change plans");planId=p;} public void pause(){status="PAUSED";} public void resume(){status="ACTIVE";} public void cancel(){status="CANCELLED";}
+ public void changePlan(UUID p){if(!"ACTIVE".equals(status))throw new IllegalStateException("Only active subscriptions can change plans");planId=p;} public void pause(){status="PAUSED";} public void resume(){status="ACTIVE";} public void pauseForDunning(){if("ACTIVE".equals(status))status="PAUSED_DUNNING";} public void resumeFromDunning(){if("PAUSED_DUNNING".equals(status))status="ACTIVE";} public void cancel(){status="CANCELLED";}
 }

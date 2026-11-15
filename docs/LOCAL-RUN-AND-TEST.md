@@ -125,7 +125,7 @@ Use Swagger UI for request schemas and the remaining API operations. Recommended
 8. Run billing once; run it again for the same period and confirm no second invoice is created.
 9. Inspect invoice lines and provenance endpoint to verify source event counts/IDs.
 10. Test pause/resume/cancel, credits, budget thresholds, dunning retries and webhook replay through Swagger.
-11. For partitioned billing, use `POST /api/invoices/batch/run?period=YYYY-MM` as ADMIN. It shards customer IDs across worker partitions and processes them in chunks of 25. If a job fails, retry with the same period so Spring Batch can restart the failed JobInstance; if it completed, use a new period or inspect the existing invoice set rather than expecting a second run.
+11. For partitioned billing, use `POST /api/invoices/batch/run?period=YYYY-MM` as ADMIN. It creates one worker partition per distinct active customer. If a job fails, retry with the same period so Spring Batch can restart the failed JobInstance; if it completed, use a new period or inspect the existing invoice set rather than expecting a second run.
 
 Do not use real customer data for the demo. Use a dedicated test customer and a non-production database.
 
@@ -159,3 +159,16 @@ Invoke-RestMethod "http://localhost:8080/api/usage/aggregate?customerId=customer
 ```
 
 The aggregation window is limited to 366 days. Property filters use exact string matching. `unique_count` counts distinct values of `distinctProperty`.
+
+
+## V15 batch restart test
+1. Start a clean local PostgreSQL/Redis stack and backend.
+2. Seed at least 100 active customers with a plan and usage events.
+3. Call `POST /api/invoices/batch/run?period=2026-11` as admin.
+4. During execution, terminate the backend process (not the database) after some worker chunks have committed.
+5. Restart backend and relaunch the same period.
+6. Query invoices and verify at most one `(customer_id, period)` invoice per customer and all eligible customers completed.
+7. Repeat with 10,000 customers for QA3 and record start/end timestamps, logs and SQL counts.
+
+## JWT production smoke test
+Configure an OIDC issuer that issues JWTs with `sub` equal to customer ID and `roles: ["CUSTOMER"]` or `roles: ["ADMIN"]`. Set `METERFLOW_OIDC_ISSUER_URI`, run with `SPRING_PROFILES_ACTIVE=prod`, then verify missing/invalid/expired tokens are rejected and role-scoped APIs deny cross-customer access. Local HTTP Basic credentials are not valid in production.
