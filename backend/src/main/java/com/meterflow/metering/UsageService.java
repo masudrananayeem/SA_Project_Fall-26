@@ -107,7 +107,7 @@ public class UsageService {
         Instant to = Instant.now();
         var usage = repo.findByCustomerIdAndMetricAndTimestampGreaterThanEqualAndTimestampLessThan(
                 customer, plan.getMetric(), from, to).stream().map(UsageEvent::getQuantity).reduce(BigDecimal.ZERO, BigDecimal::add);
-        var amount = pricing.calculate(plan, usage);
+        var amount = pricing.calculate(plan, usage, BigDecimal.valueOf(subscription.getSeatCount()));
         return Map.of("customerId", customer, "eventCount", summary.get("eventCount"), "usage", summary.get("usage"),
                 "billableMetric", plan.getMetric(), "billableQuantity", usage, "estimatedAmount", amount,
                 "currency", plan.getCurrency(), "plan", plan.getPlanKey() + " v" + plan.getVersion(), "asOf", to);

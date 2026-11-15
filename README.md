@@ -171,3 +171,18 @@ See [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) for local Docker setup, PostgreSQ
 - See `docs/V10-CHANGELOG.md` and `docs/CRITERIA-MASTER-STATUS.md` for honest implementation status.
 
 **Release warning:** This remains a course development build, not a production-certified billing service. Execute Maven/CI, Docker, frontend build and QA benchmarks. A complete Flyway baseline, restartable chunk-oriented billing, production identity, and webhook SSRF hardening remain release gates. C10 requires the instructor's actual change request; C12 requires the live defence.
+
+
+## V12 assignment audit (16 Nov 2026)
+
+The uploaded V11 project was compared against the full Project 2 brief. See
+[`docs/V12-ASSIGNMENT-COMPLIANCE-AUDIT.md`](docs/V12-ASSIGNMENT-COMPLIANCE-AUDIT.md)
+for the requirement-by-requirement FR1–FR10, QA1–QA5, Spring Boot architecture
+and C1–C12 assessment, including concrete remaining implementation work.
+
+V12 fixes a confirmed estimate bug: per-seat live estimates now pass the
+subscription's configured seat count to the pricing engine. A regression test
+was added. Maven, Docker, frontend build and performance acceptance tests were
+not executable in the preparation environment; no test or QA benchmark is
+claimed as passed. This remains an academic development build until the
+release gates in the audit are completed.
