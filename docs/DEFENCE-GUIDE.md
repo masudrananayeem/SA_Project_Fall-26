@@ -20,3 +20,14 @@ This is a preparation plan, not evidence that a live defence has occurred.
 - What happens if a billing run is interrupted? (Do not claim restartability until Spring Batch job and integration test exist.)
 - How are historical prices protected from later plan edits?
 - Which QA targets have measured evidence, and on what hardware?
+
+## V18 demo script (about 10 minutes)
+1. **Plans (FR3/FR10/QA4):** create plan `starter` v2 with `PUT /api/catalogue/plans/starter`; show `GET /api/catalogue/plans/charge-types`; explain `ChargeRegistryExtensionTest` (new type = one new class).
+2. **Subscription (FR4):** create a subscription (Swagger), then `change-plan` with `IMMEDIATE` and show the proration delta.
+3. **Ingestion (FR1/FR2):** Usage Metering page → ingest 500 events twice (second time all duplicates).
+4. **Live spend (FR7):** Live Spend page → set a budget below the estimate → 50/80/100 % notifications appear within a minute.
+5. **Billing (FR5/FR6):** Invoices → Run billing → open the invoice: one line per charge, price rule, tax rule; click **Trace** (QA5) and **Render**.
+6. **Simulator (FR10):** Invoices → Plan version simulator → compare v1 and v2 for the month.
+7. **Dunning (FR8):** `POST /api/payments/mock/customers/customer/outcome?succeed=false`, then on a finalised invoice click *Simulate failed payment*; Dunning page → run retries "as of" +1, +3, +7, +14 days → RETRYING → PAST_DUE → SUSPENDED; set outcome back to succeed and click *Pay* → REACTIVATED.
+8. **Webhooks (FR9):** register an endpoint (e.g. a local receiver), show deliveries and replay.
+9. **Architecture:** module diagram (no cycles), ADR-005/006, `PATTERN-JUSTIFICATION.md`, QA1 evidence.

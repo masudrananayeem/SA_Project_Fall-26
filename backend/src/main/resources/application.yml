@@ -4,25 +4,45 @@ spring:
     url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/meterflow}
     username: ${SPRING_DATASOURCE_USERNAME:meterflow}
     password: ${SPRING_DATASOURCE_PASSWORD:meterflow_local_password}
+    hikari:
+      maximum-pool-size: ${DB_POOL_SIZE:30}
   flyway:
     enabled: false
   jpa:
     hibernate: { ddl-auto: update }
     open-in-view: false
-    properties.hibernate.jdbc.time_zone: UTC
+    properties:
+      hibernate.jdbc.time_zone: UTC
+      hibernate.jdbc.batch_size: 50
+      hibernate.order_inserts: true
   batch:
     job: { enabled: false }
     jdbc: { initialize-schema: always }
   data.redis:
     host: ${SPRING_DATA_REDIS_HOST:localhost}
     port: ${SPRING_DATA_REDIS_PORT:6379}
+    # Fail fast: if Redis is down the estimate is computed without the cache (CacheConfig).
+    timeout: 2s
+    connect-timeout: 2s
+  cache:
+    type: ${CACHE_TYPE:redis}
+    cache-names: liveEstimate
+    redis:
+      time-to-live: 30s
   jackson:
     serialization: { write-dates-as-timestamps: false }
+  modulith:
+    events:
+      jdbc:
+        schema-initialization:
+          enabled: true
+      republish-outstanding-events-on-restart: true
+    republish-outstanding-events-on-restart: true
 server:
   port: 8080
   error.include-message: always
 management:
-  endpoints.web.exposure.include: health,info,metrics,prometheus
+  endpoints.web.exposure.include: health,info,metrics,prometheus,modulith
   endpoint.health.probes.enabled: true
 springdoc.swagger-ui.path: /swagger-ui.html
 meterflow:
@@ -31,5 +51,24 @@ meterflow:
     admin-password: ${ADMIN_PASSWORD:meterflow-admin}
     customer-user: ${CUSTOMER_USERNAME:customer}
     customer-password: ${CUSTOMER_PASSWORD:meterflow-customer}
+    password-hash-strength: ${METERFLOW_PASSWORD_HASH_STRENGTH:10}
   cors:
     allowed-origins: ${METERFLOW_CORS_ALLOWED_ORIGINS:http://localhost:5173}
+  billing:
+    # Finalise invoices right after the draft is created (FR5).
+    auto-finalise: true
+    # Demo convenience: lets the current (still open) month be billed. Always false in prod.
+    allow-open-period: ${METERFLOW_ALLOW_OPEN_PERIOD:true}
+    # Billing date: 00:30 UTC on the 1st, for the month that just closed.
+    cron: "0 30 0 1 * *"
+    recover-stale-on-startup: true
+  budgets:
+    refresh-ms: 60000
+  dunning:
+    past-due-grace-days: 7
+  payments:
+    mock:
+      failing-customers: ${METERFLOW_MOCK_FAILING_CUSTOMERS:}
+  webhooks:
+    # Local demo receivers such as http://localhost:9000 are allowed outside prod.
+    allow-private-hosts: ${METERFLOW_WEBHOOK_ALLOW_PRIVATE:true}

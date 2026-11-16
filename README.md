@@ -9,11 +9,31 @@
 MeterFlow is a course-project implementation foundation for usage-based SaaS/API billing. It uses a Spring Boot modular monolith and a React customer/admin console. Version 2 adds an extensible pricing strategy registry, a reusable metric aggregation engine, and subscription-aware live estimates.
 
 ## Technology
-- Java 21, Spring Boot 4.0.0, Spring Modulith, Maven
+- Java 21, Spring Boot 3.5.16, Spring Modulith 1.4 (event publication registry), Maven (see ADR-005)
 - Spring Data JPA, Spring Batch starter, Spring Security, Actuator, SpringDoc
 - PostgreSQL 17, Redis 7
 - React 19, TypeScript, Vite, Tailwind CSS
-- JUnit 5, Spring Modulith tests, Testcontainers, k6
+- JUnit 5, Mockito, Spring Modulith tests, Testcontainers, k6
+
+## V18 at a glance
+
+- Builds again: POM aligned with the Boot 3 APIs the code uses; frontend type definitions and pinned dependencies.
+- Every FR is implemented end to end: billable-metric aggregations in billing, late usage billed on the
+  next invoice, prorated plan changes, automatic finalise + mock collection, dunning state machine,
+  plan versions with simulator and migration dry run, live spend with budgets and alerts.
+- Patterns in real flows: Strategy, Composite, Template Method, Builder, Visitor, State, Observer.
+- QA1 evidence: 1,000,000 events (3 % duplicates, 2 % late) billed exactly once and to the paisa
+  against an independent oracle (`docs/quality-evidence/QA1-ACCURACY.md`).
+- Details: `docs/V18-CHANGELOG.md`, status matrix: `docs/CRITERIA-MASTER-STATUS.md`.
+
+## Tests
+
+```bash
+cd backend
+mvn verify                    # unit + Modulith architecture + QA1 (100k events)
+mvn verify -Pintegration      # + PostgreSQL Testcontainers test (Docker)
+mvn test -Dtest=Qa1AccuracyTest -Dqa1.events=1000000 -DargLine=-Xmx3g   # QA1 at 1M events
+```
 
 ## Start with Docker
 
@@ -42,11 +62,11 @@ cd backend
 mvn spring-boot:run
 ```
 
-Frontend (requires Node.js 20+):
+Frontend (requires Node.js 22+):
 
 ```bash
 cd frontend
-npm install
+npm ci
 npm run dev
 ```
 

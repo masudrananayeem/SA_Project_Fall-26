@@ -41,4 +41,11 @@ public class ApiExceptionHandler {
         problem.setTitle("State conflict");
         return ResponseEntity.status(HttpStatus.CONFLICT).body(problem);
     }
+
+    @ExceptionHandler(java.util.NoSuchElementException.class)
+    ResponseEntity<ProblemDetail> notFound(java.util.NoSuchElementException ex) {
+        var problem = ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, ex.getMessage() == null ? "Resource not found" : ex.getMessage());
+        problem.setTitle("Not found");
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(problem);
+    }
 }

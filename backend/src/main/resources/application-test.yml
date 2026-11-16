@@ -1,6 +1,6 @@
 spring:
   datasource:
-    url: jdbc:h2:mem:meterflow;MODE=PostgreSQL;DB_CLOSE_DELAY=-1
+    url: jdbc:h2:mem:meterflow;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH;DB_CLOSE_DELAY=-1
     username: sa
     password:
   jpa:
@@ -9,3 +9,21 @@ spring:
   batch:
     jdbc:
       initialize-schema: always
+  cache:
+    type: simple
+  data:
+    redis:
+      repositories:
+        enabled: false
+management:
+  health:
+    redis:
+      enabled: false
+meterflow:
+  billing:
+    allow-open-period: true
+    recover-stale-on-startup: false
+  budgets:
+    initial-delay-ms: 3600000
+  webhooks:
+    dispatch-ms: 3600000

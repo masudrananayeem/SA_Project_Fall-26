@@ -23,7 +23,13 @@ import java.util.stream.Collectors;
 
 @Configuration @EnableMethodSecurity
 public class SecurityConfig {
-    @Bean PasswordEncoder passwordEncoder() { return new BCryptPasswordEncoder(); }
+    /**
+     * BCrypt cost is configurable: local Basic Auth re-hashes on every request, so load tests (QA2)
+     * use a low cost (for example 4) or a JWT in the prod profile. Default 10.
+     */
+    @Bean PasswordEncoder passwordEncoder(@Value("${meterflow.security.password-hash-strength:10}") int strength) {
+        return new BCryptPasswordEncoder(Math.max(4, Math.min(31, strength)));
+    }
 
     @Bean @Profile("!prod") UserDetailsService users(
             @Value("${meterflow.security.admin-user}") String adminUser,

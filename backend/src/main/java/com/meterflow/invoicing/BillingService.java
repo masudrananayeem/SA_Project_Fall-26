@@ -1,29 +1,183 @@
 package com.meterflow.invoicing;
-import com.meterflow.subscriptions.*;import com.meterflow.catalogue.*;import com.meterflow.metering.*;import org.springframework.stereotype.Service;import org.springframework.transaction.annotation.Transactional;
-import java.time.*;import java.math.*;import java.util.*;
-@Service public class BillingService {
- private final SubscriptionRepository subs;private final PlanRepository plans;private final UsageEventRepository events;private final InvoiceRepository invoices;private final InvoiceLineRepository lines;private final PricingService pricing; private final com.meterflow.credits.CreditService credits;
- public BillingService(SubscriptionRepository s,PlanRepository p,UsageEventRepository e,InvoiceRepository i,InvoiceLineRepository l,PricingService pr,com.meterflow.credits.CreditService cr){subs=s;plans=p;events=e;invoices=i;lines=l;pricing=pr;credits=cr;}
 
- @Transactional(readOnly=true) public Map<String,Object> simulate(String customer,String period){YearMonth ym=YearMonth.parse(period);var sub=subs.findTopByCustomerIdAndStatusOrderByPeriodStartDesc(customer,"ACTIVE").orElseThrow(()->new IllegalArgumentException("No active subscription"));var plan=plans.findById(sub.getPlanId()).orElseThrow();Instant from=ym.atDay(1).atStartOfDay(ZoneOffset.UTC).toInstant();Instant to=ym.plusMonths(1).atDay(1).atStartOfDay(ZoneOffset.UTC).toInstant();var quantity=events.findMetricWindow(customer,plan.getMetric(),from,to).stream().map(UsageEvent::getQuantity).reduce(BigDecimal.ZERO,BigDecimal::add);BigDecimal gross=pricing.calculate(plan,quantity,BigDecimal.valueOf(sub.getSeatCount()));BigDecimal tax=gross.multiply(plan.getTaxRate()).divide(new BigDecimal("100"),2,RoundingMode.HALF_UP);return Map.of("customerId",customer,"period",period,"plan",plan.getPlanKey()+" v"+plan.getVersion(),"quantity",quantity,"seats",sub.getSeatCount(),"subtotal",gross,"taxRate",plan.getTaxRate(),"tax",tax,"total",gross.add(tax),"currency",plan.getCurrency(),"simulationOnly",true);}
- @Transactional public Map<String,Object> runCustomer(String period,String customer){
-  YearMonth ym;try{ym=YearMonth.parse(period);}catch(Exception e){throw new IllegalArgumentException("period must be YYYY-MM");}
-  if(invoices.findByCustomerIdAndPeriod(customer,period).isPresent())return Map.of("customerId",customer,"period",period,"created",0,"alreadyExisted",1);
-  var sub=subs.findTopByCustomerIdAndStatusOrderByPeriodStartDesc(customer,"ACTIVE").orElse(null);
-  if(sub==null || !sub.getPeriodStart().isBefore(ym.plusMonths(1).atDay(1)) || !sub.getPeriodEnd().isAfter(ym.atDay(1).minusDays(1)))return Map.of("customerId",customer,"period",period,"created",0,"skipped",1);
-  var plan=plans.findById(sub.getPlanId()).orElseThrow();
-  if(sub.getTrialEnd()!=null&&!sub.getTrialEnd().isBefore(ym.plusMonths(1).atDay(1)))return Map.of("customerId",customer,"period",period,"created",0,"skipped",1);
-  Instant from=ym.atDay(1).atStartOfDay(ZoneOffset.UTC).toInstant();Instant to=ym.plusMonths(1).atDay(1).atStartOfDay(ZoneOffset.UTC).toInstant();
-  var sourceEvents=events.findMetricWindow(customer,plan.getMetric(),from,to);
-  var usage=sourceEvents.stream().map(UsageEvent::getQuantity).reduce(BigDecimal.ZERO,BigDecimal::add);
-  BigDecimal amount=pricing.calculate(plan,usage,BigDecimal.valueOf(sub.getSeatCount()));
-  if(sub.getTrialEnd()!=null&&sub.getTrialEnd().isAfter(ym.atDay(1))){long days=java.time.temporal.ChronoUnit.DAYS.between(sub.getTrialEnd(),ym.plusMonths(1).atDay(1));amount=amount.multiply(BigDecimal.valueOf(Math.max(0,days))).divide(BigDecimal.valueOf(ym.lengthOfMonth()),2,RoundingMode.HALF_UP);}
-  BigDecimal creditApplied=credits.apply(customer,plan.getCurrency(),amount);BigDecimal net=amount.subtract(creditApplied).max(BigDecimal.ZERO);BigDecimal tax=net.multiply(plan.getTaxRate()).divide(new BigDecimal("100"),2,RoundingMode.HALF_UP);
-  var inv=invoices.saveAndFlush(new InvoiceBuilder().customer(customer).period(period).currency(plan.getCurrency()).subtotal(net).tax(tax).build());
-  String sourceIds=sourceEvents.stream().map(e->"\""+e.getId()+"\"").collect(java.util.stream.Collectors.joining(",", "[", "]"));
-  lines.save(new InvoiceLine(inv.getId(),plan.getMetric(),usage,plan.getUnitPrice(),net,"Plan "+plan.getPlanKey()+" v"+plan.getVersion()+": configured pricing; minimum commitment/allowance rules applied","Tax rate "+plan.getTaxRate()+"%; prepaid credit applied: "+creditApplied,sourceIds,sourceEvents.size()));
-  return Map.of("customerId",customer,"period",period,"created",1,"invoiceId",inv.getId().toString());
- }
+import com.meterflow.catalogue.PlanRepository;
+import com.meterflow.metering.BillableUsageCalculator;
+import com.meterflow.metering.UsageEvent;
+import com.meterflow.metering.UsageEventRepository;
+import com.meterflow.subscriptions.SubscriptionRepository;
+import com.meterflow.subscriptions.SubscriptionState;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
- @Transactional public Map<String,Object> run(String period){YearMonth ym;try{ym=YearMonth.parse(period);}catch(Exception e){throw new IllegalArgumentException("period must be YYYY-MM");}int created=0,existing=0;for(var sub:subs.findByStatus("ACTIVE")){if(!sub.getPeriodStart().isBefore(ym.plusMonths(1).atDay(1)) || !sub.getPeriodEnd().isAfter(ym.atDay(1).minusDays(1))) continue;String customer=sub.getCustomerId();if(invoices.findByCustomerIdAndPeriod(customer,period).isPresent()){existing++;continue;}var plan=plans.findById(sub.getPlanId()).orElseThrow();if(sub.getTrialEnd()!=null&&!sub.getTrialEnd().isBefore(ym.plusMonths(1).atDay(1))){existing++;continue;}Instant from=ym.atDay(1).atStartOfDay(ZoneOffset.UTC).toInstant();Instant to=ym.plusMonths(1).atDay(1).atStartOfDay(ZoneOffset.UTC).toInstant();var sourceEvents=events.findMetricWindow(customer,plan.getMetric(),from,to);var usage=sourceEvents.stream().map(UsageEvent::getQuantity).reduce(BigDecimal.ZERO,BigDecimal::add);BigDecimal amount=pricing.calculate(plan,usage,BigDecimal.valueOf(sub.getSeatCount()));if(sub.getTrialEnd()!=null&&sub.getTrialEnd().isAfter(ym.atDay(1))){long days=java.time.temporal.ChronoUnit.DAYS.between(sub.getTrialEnd(),ym.plusMonths(1).atDay(1));amount=amount.multiply(BigDecimal.valueOf(Math.max(0,days))).divide(BigDecimal.valueOf(ym.lengthOfMonth()),2,RoundingMode.HALF_UP);}BigDecimal creditApplied=credits.apply(customer,plan.getCurrency(),amount);BigDecimal net=amount.subtract(creditApplied).max(BigDecimal.ZERO);BigDecimal tax=net.multiply(plan.getTaxRate()).divide(new BigDecimal("100"),2,RoundingMode.HALF_UP);var inv=invoices.save(new InvoiceBuilder().customer(customer).period(period).currency(plan.getCurrency()).subtotal(net).tax(tax).build());String sourceIds=sourceEvents.stream().map(e->"\""+e.getId()+"\"").collect(java.util.stream.Collectors.joining(",", "[", "]"));lines.save(new InvoiceLine(inv.getId(),plan.getMetric(),usage,plan.getUnitPrice(),net,"Plan "+plan.getPlanKey()+" v"+plan.getVersion()+": configured pricing; minimum commitment/allowance rules applied","Tax rate "+plan.getTaxRate()+"%; prepaid credit applied: "+creditApplied,sourceIds,sourceEvents.size()));created++;}return Map.of("period",period,"created",created,"alreadyExisted",existing,"status","completed");}
+import java.math.BigDecimal;
+import java.time.YearMonth;
+import java.time.ZoneOffset;
+import java.util.*;
+
+/** Facade used by the controller and the Spring Batch job. */
+@Service
+public class BillingService {
+    private static final Logger log = LoggerFactory.getLogger(BillingService.class);
+    static final int TRACE_ID_LIMIT = 1000;
+
+    private final InvoiceBillingRun invoiceRun;
+    private final SimulationBillingRun simulationRun;
+    private final SubscriptionRepository subscriptions;
+    private final PlanRepository plans;
+    private final InvoiceRepository invoices;
+    private final InvoiceLineRepository lines;
+    private final UsageEventRepository events;
+    private final ApplicationEventPublisher publisher;
+    private final BillableUsageCalculator usage;
+
+    public BillingService(InvoiceBillingRun invoiceRun, SimulationBillingRun simulationRun, SubscriptionRepository subscriptions,
+                          PlanRepository plans, InvoiceRepository invoices, InvoiceLineRepository lines,
+                          UsageEventRepository events, ApplicationEventPublisher publisher, BillableUsageCalculator usage) {
+        this.invoiceRun = invoiceRun;
+        this.simulationRun = simulationRun;
+        this.subscriptions = subscriptions;
+        this.plans = plans;
+        this.invoices = invoices;
+        this.lines = lines;
+        this.events = events;
+        this.publisher = publisher;
+        this.usage = usage;
+    }
+
+    static YearMonth parsePeriod(String period) {
+        try {
+            return YearMonth.parse(period);
+        } catch (Exception e) {
+            throw new IllegalArgumentException("period must be YYYY-MM");
+        }
+    }
+
+    /** Bills one customer (used by each Spring Batch chunk). Idempotent. */
+    public Map<String, Object> runCustomer(String period, String customer) {
+        return invoiceRun.run(customer, parsePeriod(period)).toMap();
+    }
+
+    /** Simple sequential run for small installations and tests; production uses the batch job. */
+    public Map<String, Object> run(String period) {
+        YearMonth ym = parsePeriod(period);
+        List<BillingOutcome> outcomes = new ArrayList<>();
+        List<String> failures = new ArrayList<>();
+        for (String customer : billableCustomers()) {
+            try {
+                outcomes.add(invoiceRun.run(customer, ym));
+            } catch (RuntimeException e) {
+                log.warn("Billing failed for customer {} period {}: {}", customer, period, e.getMessage());
+                failures.add(customer + ": " + e.getMessage());
+            }
+        }
+        Map<String, Object> summary = new LinkedHashMap<>(BillingOutcome.summary(period, outcomes));
+        summary.put("failed", failures);
+        return summary;
+    }
+
+    public List<String> billableCustomers() {
+        return subscriptions.findByStatus(SubscriptionState.ACTIVE.name()).stream()
+                .map(s -> s.getCustomerId()).distinct().sorted().toList();
+    }
+
+    /** FR10: previous month by default, under the subscription's plan or any plan version. */
+    public Map<String, Object> simulate(String customer, String period, UUID planId) {
+        YearMonth ym = period == null || period.isBlank() ? YearMonth.now(ZoneOffset.UTC).minusMonths(1) : parsePeriod(period);
+        return simulationRun.simulate(customer, ym, planId).toMap();
+    }
+
+    public Map<String, Object> simulate(String customer, String period) { return simulate(customer, period, null); }
+
+    /** Simulates the month under every version of the customer's plan key, side by side. */
+    @Transactional(readOnly = true)
+    public Map<String, Object> compareVersions(String customer, String period) {
+        var sub = subscriptions.findByCustomerIdOrderByPeriodStartDesc(customer).stream().findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("Customer has no subscription"));
+        var current = plans.findById(sub.getPlanId()).orElseThrow();
+        List<Map<String, Object>> results = new ArrayList<>();
+        for (var version : plans.findByPlanKeyOrderByVersionDesc(current.getPlanKey())) {
+            Map<String, Object> row = new LinkedHashMap<>(simulate(customer, period, version.getId()));
+            row.put("planId", version.getId());
+            row.put("planVersion", version.getVersion());
+            row.put("current", version.getId().equals(current.getId()));
+            results.add(row);
+        }
+        return Map.of("customerId", customer, "planKey", current.getPlanKey(), "simulations", results);
+    }
+
+    @Transactional
+    public Invoice finalise(UUID invoiceId) {
+        var invoice = invoices.findById(invoiceId).orElseThrow(() -> new NoSuchElementException("Invoice not found"));
+        invoice.finalise();
+        var saved = invoices.save(invoice);
+        publisher.publishEvent(new InvoiceFinalised(saved.getId(), saved.getCustomerId(), saved.getPeriod(), saved.getTotal(), saved.getCurrency()));
+        return saved;
+    }
+
+    @Transactional(readOnly = true)
+    public InvoiceDocument document(UUID invoiceId) {
+        var invoice = invoices.findById(invoiceId).orElseThrow(() -> new NoSuchElementException("Invoice not found"));
+        String planLabel = invoice.getPlanId() == null ? "" : plans.findById(invoice.getPlanId())
+                .map(p -> p.getPlanKey() + " v" + p.getVersion()).orElse("");
+        var billingLines = lines.findByInvoiceId(invoiceId).stream().map(InvoiceLine::toBillingLine).toList();
+        return new InvoiceDocument(invoice.getCustomerId(), invoice.getPeriod(), invoice.getCurrency(), invoice.getPlanId(), planLabel,
+                invoice.getBilledQuantity() == null ? BigDecimal.ZERO : invoice.getBilledQuantity(),
+                invoice.getSeatCount() == null ? 1 : invoice.getSeatCount(), billingLines, invoice.getSubtotal(), invoice.getTax(),
+                invoice.getTaxRule() == null ? "" : invoice.getTaxRule(), invoice.getCreditApplied(), invoice.getTotal());
+    }
+
+    /**
+     * QA5: one call explains a line: its quantity, price rule, tax rule and the usage events behind
+     * it, with the quantity recomputed from those events.
+     */
+    @Transactional(readOnly = true)
+    public Map<String, Object> trace(UUID lineId) {
+        var line = lines.findById(lineId).orElseThrow(() -> new NoSuchElementException("Invoice line not found"));
+        var invoice = invoices.findById(line.getInvoiceId()).orElseThrow();
+        List<UUID> ids;
+        if (InvoiceLine.USAGE.equals(line.getKind())) {
+            // Usage lines of one invoice share the event list stored on its first usage line.
+            ids = lines.findByInvoiceId(invoice.getId()).stream()
+                    .filter(l -> InvoiceLine.USAGE.equals(l.getKind()))
+                    .map(l -> InvoiceLine.idsFromJson(l.getSourceEventIdsJson()))
+                    .filter(list -> !list.isEmpty()).findFirst().orElse(List.of());
+        } else {
+            ids = InvoiceLine.idsFromJson(line.getSourceEventIdsJson());
+        }
+        List<UsageEvent> found = new ArrayList<>();
+        for (int i = 0; i < ids.size(); i += 1000) found.addAll(events.findAllById(ids.subList(i, Math.min(ids.size(), i + 1000))));
+        var plan = invoice.getPlanId() == null ? null : plans.findById(invoice.getPlanId()).orElse(null);
+        BigDecimal summed = found.stream().map(UsageEvent::getQuantity).reduce(BigDecimal.ZERO, BigDecimal::add);
+        boolean usageLine = InvoiceLine.USAGE.equals(line.getKind());
+        // Usage lines: re-aggregate the source events with the plan's metric definition (FR2).
+        BigDecimal recomputed = usageLine && plan != null ? usage.quantify(plan, found).quantity() : summed;
+        BigDecimal billed = usageLine
+                ? (invoice.getBilledQuantity() == null ? line.getQuantity() : invoice.getBilledQuantity())
+                : line.getQuantity();
+        boolean comparable = usageLine || plan == null || plan.isAdditiveUnfiltered();
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("invoiceId", invoice.getId());
+        result.put("customerId", invoice.getCustomerId());
+        result.put("period", invoice.getPeriod());
+        result.put("lineId", line.getId());
+        result.put("kind", line.getKind());
+        result.put("line", line.getLineName());
+        result.put("metric", line.getMetric());
+        result.put("quantity", line.getQuantity());
+        result.put("amount", line.getAmount());
+        result.put("priceRule", line.getPriceRule());
+        result.put("taxRule", line.getTaxRule());
+        result.put("eventCount", ids.size());
+        result.put("eventsFound", found.size());
+        result.put("aggregation", plan == null ? "sum" : plan.getAggregation());
+        result.put("billedUsageQuantity", billed);
+        result.put("recomputedQuantity", recomputed);
+        result.put("quantityMatches", comparable ? recomputed.compareTo(billed) == 0 : null);
+        result.put("eventIds", ids.size() > TRACE_ID_LIMIT ? ids.subList(0, TRACE_ID_LIMIT) : ids);
+        result.put("eventIdsTruncated", ids.size() > TRACE_ID_LIMIT);
+        return result;
+    }
 }

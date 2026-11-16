@@ -102,3 +102,41 @@ Page size is limited to 100. Customer accounts are scoped to their authenticated
 
 - `GET /api/usage/aggregate`: filtered sum/count/maximum/unique_count/latest_value over a metric window. Parameters: `customerId`, `metric`, `from`, `to`, `operation`; optional `filters` (URL-encoded JSON object) and `distinctProperty`. Customer ownership rules apply.
 - `POST /api/invoices/batch/run?period=YYYY-MM`: ADMIN-only partitioned Spring Batch billing run. It partitions active customers and delegates each partition to an idempotent customer-period invoice operation. Spring Batch job metadata enables failed-job restart with the same parameters; the invoice unique constraint remains the final duplicate guard.
+
+## V18 endpoints
+
+| Method | Route | Role | Purpose |
+|---|---|---|---|
+| PUT | `/api/catalogue/plans/{planKey}` | ADMIN | Edit a plan = publish the next immutable version |
+| GET | `/api/catalogue/plans/{planKey}/versions` | any | All versions of a plan |
+| GET | `/api/catalogue/plans/charge-types` | any | Registered charge types (built-in + plug-ins) |
+| POST | `/api/catalogue/plans/{planKey}/migrate-active?fromVersion=1&toVersion=2&dryRun=true` | ADMIN | Move pinned subscriptions to another version (dry run shows impact) |
+| POST | `/api/subscriptions/{id}/change-plan` body `{"planId":"…","timing":"IMMEDIATE\|PERIOD_END"}` | ADMIN | Upgrade/downgrade with proration or at period end |
+| GET | `/api/usage/estimate?customerId=&period=` | owner/ADMIN | Live spend: usage, charge lines, tax, total (cached 30 s) |
+| GET/POST | `/api/budgets` | owner/ADMIN | Read / set a monthly budget (alerts at 50/80/100 %) |
+| GET | `/api/notifications?customerId=` | owner/ADMIN | In-app notifications (invoices, payments, dunning, budgets) |
+| GET | `/api/invoices/{id}` | owner/ADMIN | Invoice |
+| GET | `/api/invoices/{id}/render?format=text\|csv` | owner/ADMIN | Rendered invoice (Visitor) |
+| GET | `/api/invoices/lines/{lineId}/trace` | owner/ADMIN | QA5: line -> price rule, tax rule, event ids, recomputed quantity |
+| GET | `/api/invoices/simulate?customerId=&period=&planId=` | ADMIN | FR10 simulator (any plan version, default last month) |
+| GET | `/api/invoices/simulate/versions?customerId=&period=` | ADMIN | Simulate under every version of the customer's plan |
+| POST | `/api/invoices/run/customer?customerId=&period=` | ADMIN | Bill one customer (idempotent) |
+| POST | `/api/invoices/batch/run?period=` | ADMIN | Partitioned, restartable billing job |
+| POST | `/api/invoices/batch/recover` | ADMIN | Mark executions left by a killed JVM as FAILED (also automatic at startup) |
+| POST | `/api/payments/mock/{invoiceId}/collect` | ADMIN | Charge now through the mock provider |
+| POST | `/api/payments/mock/customers/{customerId}/outcome?succeed=false` | ADMIN | Make the mock provider decline this customer |
+| POST | `/api/dunning/process?asOf=2026-11-20T00:00:00Z` | ADMIN | Run due retries as of a time (demo of day 1/3/7) |
+| GET | `/api/late-adjustments?customerId=&status=PENDING` | ADMIN | Late-usage ledger (billed automatically on the next invoice) |
+
+Removed: `POST /api/invoices/late-adjustments/run` (late usage is now billed automatically).
+
+### Webhook signature (changed in V18)
+Headers: `X-MeterFlow-Event`, `X-MeterFlow-Delivery`, `X-MeterFlow-Timestamp` (epoch seconds),
+`X-MeterFlow-Signature: sha256=<hex>` where the HMAC-SHA256 is computed over
+`<timestamp>.<raw body>` with the endpoint secret (min. 16 characters). Reject requests whose
+timestamp is more than 5 minutes old.
+
+### Billing period rule
+Invoices cover calendar months (UTC). The scheduled billing date is 00:30 UTC on the 1st for the
+month that just closed. In the prod profile an open month cannot be billed; the dev profile allows
+it for demos (`METERFLOW_ALLOW_OPEN_PERIOD`).

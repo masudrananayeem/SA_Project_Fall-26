@@ -1,4 +1,4 @@
-# CSE 444 — MeterFlow Master Criteria Audit & Update
+# CSE 444 — MeterFlow Master Criteria Audit (V18, 2026-11-16)
 
 **Student:** Masud Rana Nayeem  
 **Student ID:** 0242310005101849  
@@ -7,6 +7,66 @@
 **Audit basis:** `CSE444_Course_Projects.docx` and `CSE444_Project_Assignments_Section_64K_188106.docx` supplied for this assignment.
 
 > Status vocabulary: **Implemented** = present in source; **Partial** = some code exists but acceptance condition is not met; **Pending evidence** = must be executed and raw output retained; **External dependency** = instructor input or live defence is required. Documentation alone is not proof of implementation.
+
+## V18 status
+
+Status words: **Done** = implemented and covered by an executed test; **Implemented** = in source
+and compiled, but its test needs Maven/Docker that was not available here; **Pending evidence** =
+mechanism exists, a timed/measured run is still needed; **External** = needs the instructor or the
+live defence.
+
+### Functional requirements
+
+| ID | Status | Implementation | Test / evidence |
+|---|---|---|---|
+| FR1 ingestion | Done | `UsageService`, `JdbcUsageEventStore` (batch `ON CONFLICT DO NOTHING`), late ledger; 72 h after period close | `UsageServiceIngestionTest`, QA1 harness; DB path in `PostgresBillingIntegrationTest` (Implemented) |
+| FR2 metrics | Done | Plan metric definition (aggregation, property, filters) applied by `BillableUsageCalculator` in billing, estimate, late usage and trace | `MetricAggregationTest`, `BillableMetricBillingTest` |
+| FR3 pricing | Done | 6 charge strategies, free allowance (`includedUnits`), minimum commitment line, BDT/USD | `ChargeStrategiesTest`, `PriceQuoteTest` |
+| FR4 subscriptions | Done | `SubscriptionState`, `PlanChangeService` (immediate+prorated / period end), pause/resume/cancel, trial convert/expire | `SubscriptionLifecycleTest`, `BillingRunTest.prorationIsPosted…` |
+| FR5 billing run | Done | `AbstractBillingRun` template: draft → lines (quantity, price rule, tax rule) → finalise; monthly schedule | `BillingRunTest` |
+| FR6 credits/corrections | Done | Credit applied before charging, credit notes, late usage on the next invoice | `BillingRunTest.lateEvents…`, `InvoiceDocumentTest`, QA1 |
+| FR7 live spend | Done (source) | Same quote as billing, 30 s cache, budget check after each batch + 60 s sweep, 30 s customer page | `LiveSpendServiceTest`, `BudgetThresholdTest` |
+| FR8 dunning | Done | `DunningState` day 1/3/7 → past due → suspended → reactivated; mock provider; notifications | `DunningCaseTest` |
+| FR9 webhooks | Implemented | HMAC (timestamp.body), backoff, delivery log, replay; save bug fixed | needs running receiver |
+| FR10 plan versions | Done | immutable versions (`PUT` = new version), pinned subscriptions, migration with dry run, simulator for any version | `BillingRunTest.simulator…` |
+
+### Quality attributes
+
+| ID | Status | Evidence |
+|---|---|---|
+| QA1 | Done (harness) | 1,000,000 events, exact paisa, no double billing – `quality-evidence/QA1-ACCURACY.md` |
+| QA2 | Pending evidence | batch insert + async consumers implemented; run `performance/ingest.js` (includes concurrent billing job) |
+| QA3 | Pending evidence | partitioned chunks, stale-execution recovery, skip policy, unique constraint; follow `BATCH-BILLING.md` QA3 procedure |
+| QA4 | Done | `ChargeRegistryExtensionTest` – new type = new class only |
+| QA5 | Done (mechanism) | trace endpoint; estimate and invoice share `PricingService.quoteForPeriod` + tax rule (`LiveSpendServiceTest`) |
+
+### Architecture focus
+
+| Item | Status |
+|---|---|
+| Spring Modulith modules + verification test | Implemented; module graph checked acyclic with no internal access (script); `ArchitectureTests` needs Maven |
+| Event publication registry | Implemented (ADR-006) |
+| Spring Batch chunking/partitioning/restart | Implemented (`BillingBatchConfiguration`, `BillingJobLauncher`) |
+| JPA + Money + optimistic locking + idempotency keys | Done (`Money`, `@Version` on subscriptions/invoices/dunning/credits, unique keys) |
+| Decoupled ingestion + cache | Done (outbox events, Redis cache with fallback) |
+| Strategy, Composite, Visitor, State, Template Method, Builder, Observer | Done – see `PATTERN-JUSTIFICATION.md` |
+
+### Common course criteria C1–C12 (changes in V18)
+- C1/C5: build fixed (ADR-005); CI runs unit + Modulith + QA1, a Testcontainers job and the 1M QA1 run; frontend uses `npm ci` with a lock file.
+- C7: ADR-005, ADR-006 added.
+- C8: all seven required patterns are now in end-to-end flows.
+- C9: QA1 raw evidence added; QA2/QA3 still need measured runs.
+- C10 / C12: still external (instructor change request; live defence). Do not fabricate.
+- C11: initialise Git and record real commits and AI usage in `PROCESS-LOG.md`.
+
+### Still open
+1. Run `mvn verify` and `mvn verify -Pintegration` with the real libraries and keep the logs.
+2. QA2 k6 run and QA3 kill/restart run on the target machine; store raw output in `quality-evidence/`.
+3. Boot 4 migration (ADR-005) – optional.
+
+---
+
+# History (V5–V17 notes, superseded by the table above)
 
 ## A. Common course criteria C1–C12
 

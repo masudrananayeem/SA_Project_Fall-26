@@ -1,0 +1,11 @@
+# QA1 accuracy harness, 1,000,000 submitted events, 2026-11-16T16:46:57Z
+# java -Xmx4g -Dqa1.events=1000000 ... com.meterflow.qa.Qa1AccuracyTest (three runs)
+QA1 submitted=1000000 unique=970000 duplicates=30000 late=20000 customers=1000 invoices=2000 septemberTotalCharges=709364.54 elapsedMs=4958
+  PASS Qa1AccuracyTest.invoicesMatchIndependentRecomputationAndNoEventIsBilledTwice (6388 ms)
+TESTS: 1 passed, 0 failed
+QA1 submitted=1000000 unique=970000 duplicates=30000 late=20000 customers=1000 invoices=2000 septemberTotalCharges=709364.54 elapsedMs=4933
+  PASS Qa1AccuracyTest.invoicesMatchIndependentRecomputationAndNoEventIsBilledTwice (6188 ms)
+TESTS: 1 passed, 0 failed
+QA1 submitted=1000000 unique=970000 duplicates=30000 late=20000 customers=1000 invoices=2000 septemberTotalCharges=709364.54 elapsedMs=5177
+  PASS Qa1AccuracyTest.invoicesMatchIndependentRecomputationAndNoEventIsBilledTwice (6792 ms)
+TESTS: 1 passed, 0 failed

@@ -1,15 +1,13 @@
 package com.meterflow.metering;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.meterflow.catalogue.PlanRepository;
-import com.meterflow.catalogue.PricingService;
-import com.meterflow.subscriptions.SubscriptionRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.dao.DataIntegrityViolationException;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -17,47 +15,76 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
 class UsageServiceIngestionTest {
-    private UsageEventRepository repository;
+    private InMemoryUsageEventStore store;
+    private LateUsageAdjustmentRepository ledger;
+    private final List<Object> published = new ArrayList<>();
+    private final List<LateUsageAdjustment> ledgerRows = new ArrayList<>();
     private UsageService service;
 
     @BeforeEach
     void setUp() {
-        repository = mock(UsageEventRepository.class);
-        service = new UsageService(repository, new ObjectMapper(), mock(PricingService.class),
-                mock(SubscriptionRepository.class), mock(PlanRepository.class));
+        store = new InMemoryUsageEventStore();
+        ledger = mock(LateUsageAdjustmentRepository.class);
+        when(ledger.saveAll(any())).thenAnswer(inv -> {
+            Iterable<LateUsageAdjustment> rows = inv.getArgument(0);
+            rows.forEach(ledgerRows::add);
+            return ledgerRows;
+        });
+        service = new UsageService(mock(UsageEventRepository.class), new ObjectMapper(), store, ledger, published::add);
     }
 
     private UsageController.EventInput event(String key, Instant timestamp) {
-        return new UsageController.EventInput("customer-1", "api_calls", BigDecimal.ONE,
-                timestamp, key, Map.of("region", "ap-south-1"));
+        return new UsageController.EventInput("customer-1", "api_calls", BigDecimal.ONE, timestamp, key, Map.of("region", "ap-south-1"));
     }
 
     @Test
-    void rejectsEventsOlderThanSeventyTwoHours() {
-        when(repository.existsByIdempotencyKey("late-1")).thenReturn(false);
-        var result = service.ingest(java.util.List.of(event("late-1", Instant.now().minusSeconds(73 * 3600))));
+    void rejectsEventsAfterTheSeventyTwoHourWindowFromPeriodClose() {
+        Instant now = Instant.parse("2026-11-04T00:00:01Z"); // October closed 2026-11-01T00:00Z; +72h = 2026-11-04T00:00Z
+        var result = service.ingest(List.of(event("late-1", Instant.parse("2026-10-31T23:00:00Z"))), now);
         assertEquals(0, result.get("accepted"));
         assertEquals(1, result.get("rejected"));
-        verify(repository, never()).saveAndFlush(any());
+        assertEquals(0, store.size());
     }
 
     @Test
-    void acceptsRecentEventsAndCountsExistingIdempotencyKeys() {
-        when(repository.existsByIdempotencyKey("duplicate-1")).thenReturn(true);
-        when(repository.existsByIdempotencyKey("new-1")).thenReturn(false);
-        var result = service.ingest(java.util.List.of(
-                event("duplicate-1", Instant.now()), event("new-1", Instant.now())));
+    void acceptsLateEventInsideWindowAndRecordsItInTheLedger() {
+        Instant now = Instant.parse("2026-11-03T23:59:00Z");
+        var result = service.ingest(List.of(event("late-ok", Instant.parse("2026-10-31T23:00:00Z"))), now);
         assertEquals(1, result.get("accepted"));
-        assertEquals(1, result.get("duplicates"));
-        verify(repository, times(1)).saveAndFlush(any(UsageEvent.class));
+        assertEquals(1, result.get("lateAccepted"));
+        assertEquals(1, ledgerRows.size());
+        assertEquals("2026-10", ledgerRows.get(0).getBillingPeriod());
+        assertEquals(LateUsageAdjustment.PENDING, ledgerRows.get(0).getStatus());
     }
 
     @Test
-    void treatsConcurrentUniqueKeyCollisionAsDuplicate() {
-        when(repository.existsByIdempotencyKey("race-1")).thenReturn(false);
-        when(repository.saveAndFlush(any(UsageEvent.class))).thenThrow(new DataIntegrityViolationException("unique key"));
-        var result = service.ingest(java.util.List.of(event("race-1", Instant.now())));
-        assertEquals(0, result.get("accepted"));
-        assertEquals(1, result.get("duplicates"));
+    void ignoresDuplicatesIncludingDuplicatesInsideOneBatch() {
+        Instant now = Instant.parse("2026-11-10T12:00:00Z");
+        Instant t = Instant.parse("2026-11-10T11:00:00Z");
+        service.ingest(List.of(event("dup-1", t)), now);
+        var result = service.ingest(List.of(event("dup-1", t), event("new-1", t), event("new-1", t)), now);
+        assertEquals(1, result.get("accepted"));
+        assertEquals(2, result.get("duplicates"));
+        assertEquals(2, store.size());
+        assertTrue(ledgerRows.isEmpty());
+    }
+
+    @Test
+    void publishesOneUsageRecordedEventPerAcceptedBatch() {
+        Instant now = Instant.parse("2026-11-10T12:00:00Z");
+        service.ingest(List.of(event("a", now.minusSeconds(60)), event("b", now.minusSeconds(30))), now);
+        service.ingest(List.of(event("a", now.minusSeconds(60))), now); // all duplicates: nothing published
+        assertEquals(1, published.size());
+        var recorded = (UsageRecorded) published.get(0);
+        assertEquals(List.of("customer-1"), recorded.customerIds());
+        assertEquals(List.of("2026-11"), recorded.periods());
+        assertEquals(2, recorded.acceptedEvents());
+    }
+
+    @Test
+    void rejectsEventsTooFarInTheFuture() {
+        Instant now = Instant.parse("2026-11-10T12:00:00Z");
+        var result = service.ingest(List.of(event("future", now.plusSeconds(3600))), now);
+        assertEquals(1, result.get("rejected"));
     }
 }
