@@ -1,3 +1,0 @@
-package com.meterflow.shared;
-import com.meterflow.catalogue.*;import org.springframework.boot.CommandLineRunner;import org.springframework.context.annotation.Bean;import org.springframework.context.annotation.Configuration;import java.math.*;
-@Configuration public class SeedData {@Bean CommandLineRunner seed(PlanRepository plans){return args->{if(plans.count()==0){plans.save(new Plan("starter",1,"Starter API Plan","BDT",new BigDecimal("299.00"),new BigDecimal("0.05"),"api_calls",new BigDecimal("1000"),new BigDecimal("299.00")));plans.save(new Plan("growth",1,"Growth API Plan","BDT",new BigDecimal("999.00"),new BigDecimal("0.025"),"api_calls",new BigDecimal("10000"),new BigDecimal("999.00")));}};}}

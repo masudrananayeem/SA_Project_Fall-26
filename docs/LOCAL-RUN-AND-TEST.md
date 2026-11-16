@@ -4,7 +4,7 @@
 
 - Git
 - Docker Desktop (start it before running the project)
-- Node.js 20+ and npm
+- Node.js 22+ and npm
 - Java 21 (only needed when running Spring Boot outside Docker)
 - Maven 3.9+ (only needed for backend tests outside Docker)
 
@@ -52,6 +52,19 @@ Stop and delete the local database volume (DESTRUCTIVE):
 ```powershell
 docker compose down -v
 ```
+
+## 2b. Check that everything works
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/smoke-test.ps1
+```
+
+It creates a plan (v1 and v2), a subscription, ingests 50 events twice (duplicates must be ignored),
+checks the live estimate (138.00 BDT), simulates v2, bills twice (only one invoice), compares
+estimate and invoice, traces a line to its 50 events, renders the invoice and checks the
+`invoice.finalised` notification. It must end with `ALL CHECKS PASSED`.
+
+Backend tests (Java 21 + Maven): `cd backend; mvn verify` (add `-Pintegration` with Docker running).
 
 ## 3. Run frontend and backend separately (optional)
 

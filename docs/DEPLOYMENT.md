@@ -1,175 +1,82 @@
-# MeterFlow — local, Cloudflare Containers and Vercel deployment
+# MeterFlow deployment: local check -> Cloudflare (backend) -> Vercel (frontend)
 
-## Deployment topology
+```
+Browser ──> Vercel (React static site) ──HTTPS──> Cloudflare Worker ──> Cloudflare Container (Spring Boot, profile "cloud")
+                                                                            └──> Neon / Supabase PostgreSQL (TLS)
+```
 
-- React + Vite frontend: Vercel static deployment (`frontend/`).
-- Spring Boot Java 21 API: Cloudflare Containers, reached through a small Cloudflare Worker gateway (`cloudflare/index.ts`).
-- Database: managed PostgreSQL (Neon, Supabase or another PostgreSQL provider).
-- Redis: managed Redis (Upstash or another provider) if enabled/required by the selected environment.
+## 0. Check locally first
+1. `cd backend && mvn verify` – must end with `BUILD SUCCESS`.
+2. `docker compose up --build -d` from the repository root, wait until `docker compose ps` shows the backend running.
+3. `powershell -ExecutionPolicy Bypass -File scripts/smoke-test.ps1` – must print `ALL CHECKS PASSED`.
 
-**Important platform note:** a Spring Boot JVM application is not deployed as plain Workers JavaScript. The Cloudflare adapter runs the existing Spring Boot Docker image using Cloudflare Containers. Cloudflare Containers are a Workers Paid feature; a Docker-compatible build environment is required when building the image from the Dockerfile. The included configuration is a single-container starter deployment, not a horizontally scaled production billing cluster.
+## 1. Database (Neon example, free tier)
+1. neon.tech -> New project -> region close to you (e.g. Singapore).
+2. Connection details -> choose the **direct** connection (not "pooled") and note host, database, user, password.
+3. JDBC URL: `jdbc:postgresql://<host>/<database>?sslmode=require`
+   (Example: `jdbc:postgresql://ep-cool-name-123456.ap-southeast-1.aws.neon.tech/neondb?sslmode=require`).
 
-## A. Local run first
+The `cloud` profile creates the tables on the first start (Hibernate `update`), plus the Spring Batch
+and event-publication tables. No Redis is needed (`CACHE_TYPE=simple`).
 
-Follow `docs/LOCAL-RUN-AND-TEST.md`. Do not deploy until the local frontend, backend health endpoint, Swagger UI and basic billing scenario work.
-
-## B. Prepare the hosted database
-
-1. Create a PostgreSQL database with a provider that allows secure external connections from Cloudflare Containers.
-2. Copy the provider's JDBC URL, username and password. Prefer TLS/SSL and a least-privilege database user.
-3. Create a Redis database if the chosen application profile requires Redis. Record host and port; keep its password/TLS settings according to the provider.
-4. **Schema blocker:** the repository currently has no complete Flyway baseline. Production profile uses `ddl-auto=validate`; a brand-new empty database will fail to start. Do not switch production to `ddl-auto=update` to bypass this. Before production, generate and review a complete schema migration from the current entity model, apply it to the hosted database, and verify backup/restore. The existing V10 SQL file is only an additive invoice-provenance migration, not a full baseline.
-
-## C. Deploy backend on Cloudflare Containers
-
-Prerequisites:
-
-- Cloudflare account with Workers Paid plan and Containers access.
-- Docker Desktop running locally (or use Cloudflare Workers Builds with the repository connected).
-- Node.js/npm installed.
-- A provisioned PostgreSQL schema as described above.
-
-From the MeterFlow repository root:
+## 2. Backend on Cloudflare Containers
+Needs: Cloudflare account with Containers enabled (Workers paid plan), Docker Desktop running, Node 22.
+From the repository root (where `wrangler.jsonc` is):
 
 ```powershell
 npm install
 npx wrangler login
-npx wrangler types
-```
-
-Set each secret. Run each command and paste the value when prompted; do not commit secrets:
-
-```powershell
-npx wrangler secret put SPRING_DATASOURCE_URL
+npx wrangler secret put SPRING_DATASOURCE_URL          # the JDBC URL from step 1
 npx wrangler secret put SPRING_DATASOURCE_USERNAME
 npx wrangler secret put SPRING_DATASOURCE_PASSWORD
-npx wrangler secret put ADMIN_USERNAME
-npx wrangler secret put ADMIN_PASSWORD
-npx wrangler secret put CUSTOMER_USERNAME
+npx wrangler secret put ADMIN_USERNAME                 # e.g. admin
+npx wrangler secret put ADMIN_PASSWORD                 # choose a strong password
+npx wrangler secret put CUSTOMER_USERNAME              # e.g. customer
 npx wrangler secret put CUSTOMER_PASSWORD
-npx wrangler secret put SPRING_DATA_REDIS_HOST
-npx wrangler secret put SPRING_DATA_REDIS_PORT
-npx wrangler secret put SPRING_DATA_REDIS_PASSWORD
-npx wrangler secret put SPRING_DATA_REDIS_SSL_ENABLED
-npx wrangler secret put METERFLOW_CORS_ALLOWED_ORIGINS
-```
-
-For `METERFLOW_CORS_ALLOWED_ORIGINS`, enter the exact Vercel production origin, e.g. `https://your-meterflow.vercel.app` (no trailing slash). If you use a custom domain, include that exact origin too, comma-separated. Do not use `*` with authenticated APIs. For a TLS-enabled managed Redis provider, set `SPRING_DATA_REDIS_SSL_ENABLED=true` and enter its password; use an empty password only when the provider does not require one.
-
-Deploy:
-
-```powershell
-npx wrangler deploy
-npx wrangler containers list
-npx wrangler containers images list
-```
-
-The first deployment can take several minutes while Cloudflare builds/publishes the container image and provisions the instance. Check Cloudflare Workers & Pages → Containers logs and health. Test:
-
-```powershell
-Invoke-RestMethod https://meterflow-api.<YOUR_WORKERS_SUBDOMAIN>.workers.dev/healthz
-Invoke-RestMethod https://meterflow-api.<YOUR_WORKERS_SUBDOMAIN>.workers.dev/actuator/health
-```
-
-The first URL checks the Worker gateway; the second checks Spring Boot and its database. Swagger should be at `/swagger-ui.html` or `/swagger-ui/index.html` depending on Springdoc routing.
-
-### Cloudflare deployment caveats
-
-- Container outbound Internet access is enabled because the Java service must reach managed PostgreSQL/Redis. Restrict database network access where possible and use TLS.
-- The Worker routes requests to one named Durable Object/container instance. This is intended as a course/demo deployment. It does not satisfy QA2/QA3 scale targets by itself.
-- Keep the API URL private until the production schema, authentication, CORS, backups and load tests are reviewed.
-- For reliable long-running billing and scheduled work, ensure the container lifecycle and job execution model are explicitly tested. Do not assume a container remains permanently warm.
-
-## D. Deploy frontend on Vercel
-
-1. Push the repository to GitHub.
-2. In Vercel, choose **Add New → Project** and import the repository.
-3. Set **Root Directory** to `frontend`.
-4. Framework preset: **Vite**.
-5. Build command: `npm run build`.
-6. Output directory: `dist`.
-7. Add environment variable for Production and Preview as appropriate:
-
-```text
-VITE_API_URL=https://meterflow-api.<YOUR_WORKERS_SUBDOMAIN>.workers.dev
-```
-
-Do not add API usernames, passwords, database credentials or tokens as `VITE_*` variables. Those values are public in the generated frontend bundle. The user enters the Basic Auth account in the MeterFlow Settings page; the browser stores it in local storage for this demo.
-
-8. Deploy. After deployment, open the Vercel URL → Settings → enter the API username/password → Save API credentials.
-9. Verify dashboard data loads and browser developer tools show no CORS or network errors.
-
-Official Vercel Vite guide: https://vercel.com/docs/frameworks/frontend/vite
-
-## E. Update and redeploy
-
-Backend / Worker:
-
-```powershell
-npm install
+npx wrangler secret put METERFLOW_CORS_ALLOWED_ORIGINS # for now: http://localhost:5173
 npx wrangler deploy
 ```
 
-Frontend: push changes to the connected Git branch; Vercel builds automatically. Or install Vercel CLI and run `vercel --prod` from `frontend/`.
+`wrangler deploy` builds `backend/Dockerfile` locally with Docker, pushes the image and deploys the
+Worker. It prints the URL, e.g. `https://meterflow-api.<your-subdomain>.workers.dev`.
+The first deploy can take several minutes before the container answers.
 
-## F. Release checklist
-
-- [ ] Full Flyway baseline created, reviewed and applied.
-- [ ] Hosted PostgreSQL backup and restore tested.
-- [ ] Managed Redis connectivity/TLS verified.
-- [ ] Unique production secrets stored as Cloudflare Worker secrets.
-- [ ] Exact Vercel origin configured in CORS secret.
-- [ ] No credentials embedded in frontend build.
-- [ ] Production authentication upgraded beyond shared in-memory demo users/HTTP Basic.
-- [ ] Cloudflare Container health, logs, restart and outbound DB connectivity verified.
-- [ ] CI, integration, security and load tests executed.
-- [ ] QA1–QA5 evidence captured; no unsupported pass claims.
-
-## Platform references
-
-- Cloudflare Containers overview: https://developers.cloudflare.com/containers/
-- Cloudflare Containers getting started: https://developers.cloudflare.com/containers/get-started/
-- Cloudflare container deployment: https://developers.cloudflare.com/containers/guides/deploy/
-- Vercel Vite deployment: https://vercel.com/docs/frameworks/frontend/vite
-- Vite environment variable security: https://vite.dev/guide/env-and-mode
-
-## V14 local helper scripts
-
-From a PowerShell terminal in the project root:
-
+Check:
 ```powershell
-.\scripts\check-local-prerequisites.ps1
-.\scripts\run-local.ps1
-.\scripts\stop-local.ps1
+curl https://meterflow-api.<your-subdomain>.workers.dev/healthz           # Worker only, instant
+curl https://meterflow-api.<your-subdomain>.workers.dev/actuator/health   # starts the container: 1-3 min the first time
+powershell -ExecutionPolicy Bypass -File scripts/smoke-test.ps1 -BaseUrl https://meterflow-api.<your-subdomain>.workers.dev -Password <ADMIN_PASSWORD>
 ```
 
-The run script creates `.env` from `.env.example` only when it does not already exist, then builds and starts the Compose stack. It does not delete the PostgreSQL volume when stopping.
+Logs: `npx wrangler tail` (Worker) and the Containers page in the Cloudflare dashboard. `npx wrangler containers list` shows status.
+The container sleeps after 30 minutes without requests; the next request starts it again (cold start).
 
-## V14 partitioned billing
+## 3. Frontend on Vercel
+1. Push the project to GitHub (or use `npx vercel` from `frontend/`).
+2. Vercel -> Add New Project -> import the repository -> **Root Directory: `frontend`**
+   (framework Vite; `frontend/vercel.json` sets `npm ci`, `npm run build`, output `dist`).
+3. Environment variable: `VITE_API_URL = https://meterflow-api.<your-subdomain>.workers.dev` (no trailing slash).
+4. Deploy and note the URL, e.g. `https://meterflow-xyz.vercel.app`.
 
-For the Spring Batch architecture demonstration, use `POST /api/invoices/batch/run?period=YYYY-MM` as ADMIN. The job partitions by active customer and records job/step execution metadata in the Spring Batch repository. Test a failed execution restart with the same period parameter before claiming QA3. Do not use the synchronous legacy billing endpoint for the 10,000-customer benchmark.
+`VITE_API_URL` is baked in at build time: after changing it, redeploy on Vercel.
 
-## Production database warning
-
-The production Hibernate setting is `ddl-auto: validate`. A fresh managed PostgreSQL database must have the full MeterFlow domain schema provisioned before deploying the application. V14 does not yet include a complete Flyway baseline migration; do not switch production to Hibernate `update` as a substitute. Spring Batch metadata table initialization is not the domain schema migration.
-
-
-## V15 production environment additions
-Set these Cloudflare Worker secrets before deploying the production profile:
-
+## 4. Connect them (CORS)
 ```powershell
-npx wrangler secret put METERFLOW_OIDC_ISSUER_URI
-npx wrangler secret put METERFLOW_WEBHOOK_ALLOWED_HOSTS
-npx wrangler secret put METERFLOW_CORS_ALLOWED_ORIGINS
-npx wrangler secret put SPRING_DATASOURCE_URL
-npx wrangler secret put SPRING_DATASOURCE_USERNAME
-npx wrangler secret put SPRING_DATASOURCE_PASSWORD
-npx wrangler secret put SPRING_DATA_REDIS_HOST
-npx wrangler secret put SPRING_DATA_REDIS_PORT
-npx wrangler secret put SPRING_DATA_REDIS_PASSWORD
-npx wrangler secret put SPRING_DATA_REDIS_SSL_ENABLED
+npx wrangler secret put METERFLOW_CORS_ALLOWED_ORIGINS   # https://meterflow-xyz.vercel.app,http://localhost:5173
+npx wrangler deploy                                      # restarts the container with the new value
 ```
+Open the Vercel URL -> **Settings** in the app -> enter the admin user/password -> save. The Overview page should load data.
 
-Production no longer uses demo Basic Auth users. Configure an OIDC provider and issue JWTs with `sub` equal to the customer ID and a `roles` array. The V15 frontend Settings page accepts a bearer access token for manual demo/testing; a complete OIDC browser login/PKCE client is not bundled. Do not deploy production access tokens as Vercel `VITE_*` variables.
+## Troubleshooting
+| Symptom | Cause / fix |
+|---|---|
+| Browser console: "blocked by CORS policy" | `METERFLOW_CORS_ALLOWED_ORIGINS` must equal the exact Vercel origin (https, no trailing slash); redeploy the Worker. |
+| 401 in the app | Wrong user/password in the app's Settings (they are the Cloudflare secrets). |
+| "did not become healthy within 240 seconds" | Usually the database: wrong JDBC URL/password, or a pooled Neon URL. Check container logs in the dashboard. |
+| Requests from Vercel go to `vercel.app/api/...` | `VITE_API_URL` was not set at build time; set it and redeploy. |
+| Spring Boot killed / restarting | Instance too small; the Worker uses `standard-1` (4 GiB). |
 
-`METERFLOW_WEBHOOK_ALLOWED_HOSTS` is a comma-separated exact hostname allowlist. Use only customer webhook domains you explicitly approve. The application rejects non-HTTPS endpoints in production, IP literals and DNS answers containing non-public addresses. For DNS-rebinding-safe enforcement, additionally route outbound webhook traffic through a controlled egress proxy/firewall that pins and filters destination IPs at connection time.
+## Production profile (optional)
+`SPRING_PROFILES_ACTIVE=prod` (Worker secret) switches to OIDC JWT login and Flyway `validate`
+(V1 + V2 migrations). It needs an identity provider (`METERFLOW_OIDC_ISSUER_URI`) issuing a `roles`
+claim; the demo frontend uses Basic Auth, so keep `cloud` for the course demo.

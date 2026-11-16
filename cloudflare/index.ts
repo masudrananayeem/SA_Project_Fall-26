@@ -1,20 +1,32 @@
 import { DurableObject } from "cloudflare:workers";
 
+/**
+ * Cloudflare Worker gateway in front of the Spring Boot container (Cloudflare Containers).
+ * Secrets are set with `npx wrangler secret put <NAME>` and passed to the container as env vars.
+ */
 interface Env {
   METERFLOW_API: DurableObjectNamespace<MeterFlowApiContainer>;
-  SPRING_DATASOURCE_URL: string;
+  SPRING_PROFILES_ACTIVE?: string;           // default "cloud" (Basic Auth demo); "prod" = OIDC JWT + Flyway
+  SPRING_DATASOURCE_URL: string;             // jdbc:postgresql://<host>/<db>?sslmode=require
   SPRING_DATASOURCE_USERNAME: string;
   SPRING_DATASOURCE_PASSWORD: string;
-  METERFLOW_OIDC_ISSUER_URI: string;
-  METERFLOW_WEBHOOK_ALLOWED_HOSTS: string;
-  SPRING_DATA_REDIS_HOST: string;
-  SPRING_DATA_REDIS_PORT: string;
-  SPRING_DATA_REDIS_PASSWORD: string;
-  SPRING_DATA_REDIS_SSL_ENABLED: string;
-  METERFLOW_CORS_ALLOWED_ORIGINS: string;
+  ADMIN_USERNAME?: string;
+  ADMIN_PASSWORD?: string;
+  CUSTOMER_USERNAME?: string;
+  CUSTOMER_PASSWORD?: string;
+  METERFLOW_CORS_ALLOWED_ORIGINS: string;    // e.g. https://meterflow.vercel.app
+  CACHE_TYPE?: string;                       // "simple" (default) or "redis"
+  DB_POOL_SIZE?: string;
+  METERFLOW_OIDC_ISSUER_URI?: string;        // prod profile only
+  METERFLOW_WEBHOOK_ALLOWED_HOSTS?: string;
+  SPRING_DATA_REDIS_HOST?: string;
+  SPRING_DATA_REDIS_PORT?: string;
+  SPRING_DATA_REDIS_PASSWORD?: string;
+  SPRING_DATA_REDIS_SSL_ENABLED?: string;
 }
 
 const PORT = 8080;
+const STARTUP_SECONDS = 240;
 
 export class MeterFlowApiContainer extends DurableObject<Env> {
   private startup?: Promise<void>;
@@ -36,32 +48,41 @@ export class MeterFlowApiContainer extends DurableObject<Env> {
     return this.ctx.container!.getTcpPort(PORT).fetch(forwarded);
   }
 
+  private containerEnv(): Record<string, string> {
+    const b = this.bindings;
+    const values: Record<string, string | undefined> = {
+      PORT: String(PORT),
+      SPRING_PROFILES_ACTIVE: b.SPRING_PROFILES_ACTIVE || "cloud",
+      JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=70 -XX:+UseSerialGC",
+      SPRING_DATASOURCE_URL: b.SPRING_DATASOURCE_URL,
+      SPRING_DATASOURCE_USERNAME: b.SPRING_DATASOURCE_USERNAME,
+      SPRING_DATASOURCE_PASSWORD: b.SPRING_DATASOURCE_PASSWORD,
+      ADMIN_USERNAME: b.ADMIN_USERNAME,
+      ADMIN_PASSWORD: b.ADMIN_PASSWORD,
+      CUSTOMER_USERNAME: b.CUSTOMER_USERNAME,
+      CUSTOMER_PASSWORD: b.CUSTOMER_PASSWORD,
+      METERFLOW_CORS_ALLOWED_ORIGINS: b.METERFLOW_CORS_ALLOWED_ORIGINS,
+      CACHE_TYPE: b.CACHE_TYPE || "simple",
+      DB_POOL_SIZE: b.DB_POOL_SIZE || "5",
+      METERFLOW_OIDC_ISSUER_URI: b.METERFLOW_OIDC_ISSUER_URI,
+      METERFLOW_WEBHOOK_ALLOWED_HOSTS: b.METERFLOW_WEBHOOK_ALLOWED_HOSTS,
+      SPRING_DATA_REDIS_HOST: b.SPRING_DATA_REDIS_HOST || "localhost",
+      SPRING_DATA_REDIS_PORT: b.SPRING_DATA_REDIS_PORT || "6379",
+      SPRING_DATA_REDIS_PASSWORD: b.SPRING_DATA_REDIS_PASSWORD,
+      SPRING_DATA_REDIS_SSL_ENABLED: b.SPRING_DATA_REDIS_SSL_ENABLED || "false",
+    };
+    return Object.fromEntries(Object.entries(values).filter(([, v]) => v !== undefined && v !== "")) as Record<string, string>;
+  }
+
   private async startAndWait(): Promise<void> {
     const container = this.ctx.container!;
     if (!container.running) {
-      container.start({
-        image: container.images.base,
-        instance: "lite",
-        enableInternet: true,
-        env: {
-          PORT: String(PORT),
-          SPRING_PROFILES_ACTIVE: "prod",
-          SPRING_DATASOURCE_URL: this.bindings.SPRING_DATASOURCE_URL,
-          SPRING_DATASOURCE_USERNAME: this.bindings.SPRING_DATASOURCE_USERNAME,
-          SPRING_DATASOURCE_PASSWORD: this.bindings.SPRING_DATASOURCE_PASSWORD,
-          METERFLOW_OIDC_ISSUER_URI: this.bindings.METERFLOW_OIDC_ISSUER_URI,
-          METERFLOW_WEBHOOK_ALLOWED_HOSTS: this.bindings.METERFLOW_WEBHOOK_ALLOWED_HOSTS,
-          SPRING_DATA_REDIS_HOST: this.bindings.SPRING_DATA_REDIS_HOST,
-          SPRING_DATA_REDIS_PORT: this.bindings.SPRING_DATA_REDIS_PORT || "6379",
-          SPRING_DATA_REDIS_PASSWORD: this.bindings.SPRING_DATA_REDIS_PASSWORD || "",
-          SPRING_DATA_REDIS_SSL_ENABLED: this.bindings.SPRING_DATA_REDIS_SSL_ENABLED || "true",
-          METERFLOW_CORS_ALLOWED_ORIGINS: this.bindings.METERFLOW_CORS_ALLOWED_ORIGINS,
-        },
-      });
+      // standard-1 = 1/2 vCPU, 4 GiB: a Spring Boot JVM does not fit in "lite" (256 MiB).
+      container.start({ image: container.images.base, instance: "standard-1", enableInternet: true, env: this.containerEnv() });
     }
     await container.setInactivityTimeout(30 * 60 * 1000);
     const port = container.getTcpPort(PORT);
-    for (let attempt = 0; attempt < 120; attempt++) {
+    for (let attempt = 0; attempt < STARTUP_SECONDS; attempt++) {
       try {
         const response = await port.fetch("http://container/actuator/health", { signal: AbortSignal.timeout(1500) });
         await response.body?.cancel();
@@ -69,7 +90,7 @@ export class MeterFlowApiContainer extends DurableObject<Env> {
       } catch { /* Spring Boot is still starting or waiting for its database. */ }
       await new Promise(resolve => setTimeout(resolve, 1000));
     }
-    throw new Error("MeterFlow Spring Boot container did not become healthy within 120 seconds.");
+    throw new Error(`MeterFlow Spring Boot container did not become healthy within ${STARTUP_SECONDS} seconds.`);
   }
 }
 
