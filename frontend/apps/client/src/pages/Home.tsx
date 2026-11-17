@@ -48,7 +48,7 @@ export function HomePage({ customerId, navigate }: { customerId: string; navigat
       <div className="stack">
         {open.map((i) => (
           <div key={i.id} className="due-banner">
-            <AlertCircle size={20} color="#b54708" />
+            <AlertCircle size={20} />
             <div>
               <b>
                 {invoiceNo(i.id)} for {periodLabel(i.period)} is due — {money(i.total, i.currency)}

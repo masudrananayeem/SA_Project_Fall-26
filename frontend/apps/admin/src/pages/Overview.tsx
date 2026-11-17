@@ -3,7 +3,7 @@ import { AlertOctagon, CalendarClock, CircleDollarSign, FileText, Rocket, Wallet
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import {
   Badge, Button, Card, CardHeader, Empty, ErrorNote, InvoiceTable, PageHeader, Spinner, Stat, StatusBadge, Table,
-  currentPeriod, dateTime, get, isoDay, money, periodLabel, post, toNumber, uid, useAction, useAsync,
+  chartPalette, currentPeriod, dateTime, get, isoDay, money, periodLabel, post, toNumber, uid, useAction, useAsync, useTheme,
   type DunningCase, type IngestResult, type Invoice, type Plan, type Subscription, type UsageEventInput,
 } from '@meterflow/shared';
 import { latestPlans, planLabel, type Navigate } from '../common';
@@ -28,6 +28,8 @@ export function OverviewPage({ navigate }: { navigate: Navigate }) {
     return { invoices, subs, dunning, plans };
   }, []);
   const { busy, run } = useAction();
+  const { theme } = useTheme();
+  const pal = chartPalette(theme, 'admin');
 
   const period = currentPeriod();
   const m = useMemo(() => {
@@ -158,12 +160,12 @@ export function OverviewPage({ navigate }: { navigate: Navigate }) {
                 <div className="chart-box">
                   <ResponsiveContainer>
                     <BarChart data={m.chart} margin={{ left: 0, right: 8, top: 8 }}>
-                      <CartesianGrid vertical={false} stroke="#eaecf0" />
-                      <XAxis dataKey="period" tickLine={false} axisLine={false} fontSize={12} />
-                      <YAxis tickLine={false} axisLine={false} fontSize={12} width={70} tickFormatter={(v) => `৳${Number(v).toLocaleString()}`} />
-                      <Tooltip formatter={(v) => money(Number(v))} cursor={{ fill: '#f2f4f7' }} />
-                      <Bar dataKey="invoiced" name="Invoiced" fill="#c7d2fe" radius={[6, 6, 0, 0]} maxBarSize={48} />
-                      <Bar dataKey="collected" name="Collected" fill="#4f46e5" radius={[6, 6, 0, 0]} maxBarSize={48} />
+                      <CartesianGrid vertical={false} stroke={pal.grid} />
+                      <XAxis dataKey="period" tickLine={false} axisLine={false} fontSize={12} tick={{ fill: pal.axis }} />
+                      <YAxis tickLine={false} axisLine={false} fontSize={12} width={70} tick={{ fill: pal.axis }} tickFormatter={(v) => `৳${Number(v).toLocaleString()}`} />
+                      <Tooltip formatter={(v) => money(Number(v))} cursor={{ fill: pal.cursor }} contentStyle={pal.tooltip} />
+                      <Bar dataKey="invoiced" name="Invoiced" fill={pal.accentSoft} radius={[6, 6, 0, 0]} maxBarSize={48} />
+                      <Bar dataKey="collected" name="Collected" fill={pal.accent} radius={[6, 6, 0, 0]} maxBarSize={48} />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>

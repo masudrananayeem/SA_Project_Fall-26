@@ -67,6 +67,14 @@ checks the live estimate (138.00 BDT), simulates v2, bills twice (only one invoi
 estimate and invoice, traces a line to its 50 events, renders the invoice and checks the
 `invoice.finalised` notification. It must end with `ALL CHECKS PASSED`.
 
+Full feature test (every API the admin console and customer portal use, 60+ checks):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/feature-test.ps1
+```
+
+It must end with `ALL FEATURES PASSED`.
+
 Backend tests (Java 21 + Maven): `cd backend; mvn verify` (add `-Pintegration` with Docker running).
 
 ## 3. Run frontend and backend separately (optional)

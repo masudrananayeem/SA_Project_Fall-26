@@ -2,6 +2,7 @@ import { useState, type FormEvent, type ReactNode } from 'react';
 import { ArrowRight, Eye, EyeOff, Lock, User } from 'lucide-react';
 import { signIn, type Role, type Session } from './api';
 import { Button } from './ui';
+import { ThemeToggle } from './theme';
 
 export interface LoginProps {
   /** Which interface this login opens. */
@@ -52,6 +53,7 @@ export function Login({ expectedRole, appTitle, appSubtitle, highlights, otherAp
 
   return (
     <div className="login">
+      <ThemeToggle className="icon-btn floating" />
       <div className="login-brand">
         <div className="login-logo">
           <span className="logo-mark">M</span>

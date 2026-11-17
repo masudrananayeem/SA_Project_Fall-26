@@ -15,6 +15,12 @@ MeterFlow is a course-project implementation foundation for usage-based SaaS/API
 - React 19, TypeScript, Vite, npm workspaces monorepo (admin console + customer portal + shared package), Recharts
 - JUnit 5, Mockito, Spring Modulith tests, Testcontainers, k6
 
+## V21 at a glance
+
+- Dark mode in the admin console and the customer portal. It follows the OS setting, has a toggle, and remembers your choice.
+- `scripts/feature-test.ps1` exercises every API feature the apps use: 60+ checks ending in `ALL FEATURES PASSED`.
+- Details: `docs/V21-CHANGELOG.md`.
+
 ## V20 at a glance
 
 - Customers can **sign up** in the portal, pick a plan and subscribe themselves, switch or cancel it, and edit their profile.

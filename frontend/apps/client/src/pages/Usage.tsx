@@ -3,13 +3,14 @@ import { Activity, Send, Sigma } from 'lucide-react';
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import {
   Alert, Button, Card, CardHeader, Empty, ErrorNote, Field, PageHeader, Spinner, Stat, Table,
-  dateTime, get, parseJsonObject, post, qs, qty, toNumber, uid, useAction, useAsync,
+  chartPalette, dateTime, get, parseJsonObject, post, qs, qty, toNumber, uid, useAction, useAsync, useTheme,
   type Aggregation, type Estimate, type IngestResult, type UsageSummary,
 } from '@meterflow/shared';
 
 const DAYS = 14;
 
 export function UsagePage({ customerId }: { customerId: string }) {
+  const pal = chartPalette(useTheme().theme, 'client');
   const summary = useAsync(() => get<UsageSummary>(`/usage/summary${qs({ customerId })}`), [customerId]);
   const estimate = useAsync(() => get<Estimate>(`/usage/estimate${qs({ customerId })}`), [customerId]);
   const metric = estimate.data?.billableMetric || 'api_calls';
@@ -44,11 +45,11 @@ export function UsagePage({ customerId }: { customerId: string }) {
             <div className="chart-box">
               <ResponsiveContainer>
                 <BarChart data={daily.data} margin={{ left: 0, right: 8, top: 8 }}>
-                  <CartesianGrid vertical={false} stroke="#eaecf0" />
-                  <XAxis dataKey="day" tickLine={false} axisLine={false} fontSize={12} interval="preserveStartEnd" />
-                  <YAxis tickLine={false} axisLine={false} fontSize={12} width={60} allowDecimals={false} />
-                  <Tooltip formatter={(v) => [qty(Number(v)), metric]} cursor={{ fill: '#f2f4f7' }} />
-                  <Bar dataKey="value" fill="#0d7a63" radius={[6, 6, 0, 0]} maxBarSize={40} />
+                  <CartesianGrid vertical={false} stroke={pal.grid} />
+                  <XAxis dataKey="day" tickLine={false} axisLine={false} fontSize={12} interval="preserveStartEnd" tick={{ fill: pal.axis }} />
+                  <YAxis tickLine={false} axisLine={false} fontSize={12} width={60} allowDecimals={false} tick={{ fill: pal.axis }} />
+                  <Tooltip formatter={(v) => [qty(Number(v)), metric]} cursor={{ fill: pal.cursor }} contentStyle={pal.tooltip} />
+                  <Bar dataKey="value" fill={pal.accent} radius={[6, 6, 0, 0]} maxBarSize={40} />
                 </BarChart>
               </ResponsiveContainer>
             </div>

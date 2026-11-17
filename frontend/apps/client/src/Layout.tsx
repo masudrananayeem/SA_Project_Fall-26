@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Activity, Bell, FileText, Home, Layers, LogOut, Menu, PiggyBank, UserCircle, X } from 'lucide-react';
-import { get, qs, timeAgo, useAsync, type CustomerNotification, type Session } from '@meterflow/shared';
+import { ThemeToggle, get, qs, timeAgo, useAsync, type CustomerNotification, type Session } from '@meterflow/shared';
 
 export const NAV = [
   { key: 'home', label: 'Overview', icon: Home },
@@ -72,6 +72,7 @@ export function Layout({ session, customerId, page, navigate, onLogout, children
             ))}
           </nav>
           <div className="portal-right">
+            <ThemeToggle />
             <div className="bell" ref={bellRef}>
               <button
                 className="icon-btn"

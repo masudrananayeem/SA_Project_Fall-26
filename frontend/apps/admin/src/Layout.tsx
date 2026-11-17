@@ -2,7 +2,7 @@ import { useState, type ReactNode } from 'react';
 import {
   Activity, AlertOctagon, Boxes, CalendarClock, ExternalLink, FileText, LayoutDashboard, LogOut, Menu, PlayCircle, Users, Wallet, Webhook,
 } from 'lucide-react';
-import type { Session } from '@meterflow/shared';
+import { ThemeToggle, type Session } from '@meterflow/shared';
 
 export const NAV = [
   { key: 'overview', label: 'Overview', icon: LayoutDashboard, group: 'Monitor' },
@@ -85,6 +85,7 @@ export function Layout({
           <span className="env-pill">
             <span className="dot live" /> API connected
           </span>
+          <ThemeToggle />
         </header>
         <main className="admin-content">{children}</main>
       </div>
