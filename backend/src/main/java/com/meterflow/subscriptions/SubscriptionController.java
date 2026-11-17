@@ -15,6 +15,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -41,6 +42,8 @@ public class SubscriptionController {
     public record ScheduleInput(@NotNull UUID planId, @NotNull LocalDate effectiveDate) { }
     /** timing: IMMEDIATE (prorated now) or PERIOD_END (first day of next billing month). */
     public record ChangeInput(@NotNull UUID planId, String timing) { }
+    /** Customer self-service: pick a plan from the catalogue. */
+    public record SelfInput(@NotNull UUID planId, @Min(1) Integer seatCount) { }
 
     @GetMapping
     public List<Subscription> all(Authentication auth) {
@@ -69,6 +72,25 @@ public class SubscriptionController {
         return repo.save(sub);
     }
 
+    /**
+     * Self-service subscription for the signed-in customer (customer portal). Starts today for one
+     * year; a customer can hold one live (not cancelled) subscription and changes its plan afterwards.
+     */
+    @PreAuthorize("hasRole('CUSTOMER')")
+    @PostMapping("/self")
+    @Transactional
+    public Subscription subscribeSelf(@Valid @RequestBody SelfInput in, Authentication auth) {
+        var plan = plans.findById(in.planId()).orElseThrow(() -> new IllegalArgumentException("Plan not found"));
+        if (!plan.isActive()) throw new IllegalArgumentException("This plan is not available");
+        boolean live = repo.findByCustomerIdOrderByPeriodStartDesc(auth.getName()).stream()
+                .anyMatch(s -> !SubscriptionState.CANCELLED.name().equals(s.getStatus()));
+        if (live) throw new IllegalStateException("You already have a subscription; change its plan instead");
+        LocalDate today = LocalDate.now(ZoneOffset.UTC);
+        var sub = new Subscription(auth.getName(), plan.getId(), today, today.plusYears(1));
+        if (in.seatCount() != null) sub.setSeatCount(in.seatCount());
+        return repo.save(sub);
+    }
+
     @PreAuthorize("hasRole('ADMIN')")
     @PostMapping("/{id}/schedule-plan-change")
     @Transactional
@@ -90,9 +112,11 @@ public class SubscriptionController {
         return repo.save(sub);
     }
 
-    @PreAuthorize("hasRole('ADMIN')")
+    /** Admin for any subscription; a customer for its own (customer portal "change plan"). */
+    @PreAuthorize("hasAnyRole('ADMIN','CUSTOMER')")
     @PostMapping("/{id}/change-plan")
-    public Map<String, Object> changePlan(@PathVariable UUID id, @Valid @RequestBody ChangeInput input) {
+    public Map<String, Object> changePlan(@PathVariable UUID id, @Valid @RequestBody ChangeInput input, Authentication auth) {
+        guard(repo.findById(id).orElseThrow(), auth);
         Map<String, Object> result = new LinkedHashMap<>();
         if ("PERIOD_END".equalsIgnoreCase(input.timing())) {
             var sub = planChanges.changeAtPeriodEnd(id, input.planId());
@@ -123,8 +147,14 @@ public class SubscriptionController {
     @PreAuthorize("hasRole('ADMIN')") @PostMapping("/{id}/resume") @Transactional
     public Subscription resume(@PathVariable UUID id) { var s = repo.findById(id).orElseThrow(); s.resume(); return repo.save(s); }
 
-    @PreAuthorize("hasRole('ADMIN')") @PostMapping("/{id}/cancel") @Transactional
-    public Subscription cancel(@PathVariable UUID id) { var s = repo.findById(id).orElseThrow(); s.cancel(); return repo.save(s); }
+    /** Admin for any subscription; a customer may cancel its own. */
+    @PreAuthorize("hasAnyRole('ADMIN','CUSTOMER')") @PostMapping("/{id}/cancel") @Transactional
+    public Subscription cancel(@PathVariable UUID id, Authentication auth) {
+        var s = repo.findById(id).orElseThrow();
+        guard(s, auth);
+        s.cancel();
+        return repo.save(s);
+    }
 
     private boolean isAdmin(Authentication a) { return a.getAuthorities().stream().anyMatch(x -> x.getAuthority().equals("ROLE_ADMIN")); }
 

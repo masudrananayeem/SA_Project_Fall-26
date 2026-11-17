@@ -7,6 +7,8 @@ import { InvoicesPage } from './pages/Invoices';
 import { BudgetPage } from './pages/Budget';
 import { AccountPage } from './pages/Account';
 import { NotificationsPage } from './pages/Notifications';
+import { PlansPage } from './pages/Plans';
+import { SignUpForm } from './SignUp';
 
 const ADMIN_URL = import.meta.env.VITE_ADMIN_URL || 'http://localhost:5173';
 const LOCAL_DEMO = !apiBase();
@@ -39,6 +41,19 @@ export default function App() {
             login(s);
             navigate('home');
           }}
+          alternate={{
+            prompt: 'New to MeterFlow?',
+            action: 'Create an account',
+            render: (back) => (
+              <SignUpForm
+                onBack={back}
+                onSignedIn={(s) => {
+                  login(s);
+                  navigate('plans');
+                }}
+              />
+            ),
+          }}
         />
       </>
     );
@@ -53,8 +68,10 @@ export default function App() {
         return <InvoicesPage customerId={customerId} selected={param} navigate={navigate} />;
       case 'budget':
         return <BudgetPage customerId={customerId} />;
+      case 'plans':
+        return <PlansPage customerId={customerId} navigate={navigate} />;
       case 'account':
-        return <AccountPage customerId={customerId} />;
+        return <AccountPage customerId={customerId} navigate={navigate} />;
       case 'notifications':
         return <NotificationsPage customerId={customerId} />;
       default:

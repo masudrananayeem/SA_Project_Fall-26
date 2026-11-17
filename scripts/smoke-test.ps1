@@ -76,5 +76,23 @@ Start-Sleep -Seconds 3
 $notes = Call GET "/api/notifications?customerId=$customer"
 if (@($notes | Where-Object { $_.eventType -eq "invoice.finalised" }).Count -ge 1) { Ok "invoice.finalised notification" } else { Bad "no invoice.finalised notification yet" }
 
+Step "Self-service account (V20): sign up, sign in, subscribe, admin sees the customer"
+$newUser = "smoke-cust-$run"
+$newPass = "Smoke-pass-$run"
+$signup = Invoke-RestMethod -Method POST -Uri "$BaseUrl/api/auth/signup" -ContentType "application/json" -TimeoutSec 300 `
+  -Body (@{ username = $newUser; password = $newPass; displayName = "Smoke Customer"; email = "smoke@example.com"; company = "Smoke Ltd" } | ConvertTo-Json)
+if ($signup.customerId -eq $newUser) { Ok "signed up $newUser" } else { Bad "sign-up returned $($signup | ConvertTo-Json -Compress)" }
+$custHeaders = @{ Authorization = "Basic " + [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes("${newUser}:${newPass}")); "X-Requested-With" = "XMLHttpRequest" }
+$me = Invoke-RestMethod -Uri "$BaseUrl/api/me" -Headers $custHeaders -TimeoutSec 300
+if ($me.roles -contains "CUSTOMER" -and $me.customerId -eq $newUser) { Ok "/api/me = CUSTOMER $newUser" } else { Bad "/api/me $($me | ConvertTo-Json -Compress)" }
+$selfSub = Invoke-RestMethod -Method POST -Uri "$BaseUrl/api/subscriptions/self" -Headers $custHeaders -ContentType "application/json" -TimeoutSec 300 -Body (@{ planId = $v2.id } | ConvertTo-Json)
+if ($selfSub.status -eq "ACTIVE" -and $selfSub.customerId -eq $newUser) { Ok "customer subscribed itself to v2" } else { Bad "self subscription $($selfSub.status)" }
+try {
+  Invoke-RestMethod -Uri "$BaseUrl/api/invoices?customerId=$customer" -Headers $custHeaders -TimeoutSec 300 | Out-Null
+  Bad "customer could read another customer's invoices"
+} catch { Ok "customer cannot read another customer's invoices (403)" }
+$all = Call GET "/api/customers"
+if (@($all | Where-Object { $_.customerId -eq $newUser }).Count -eq 1) { Ok "admin sees the new customer" } else { Bad "admin customer list" }
+
 Write-Host ""
 if ($failed -eq 0) { Write-Host "ALL CHECKS PASSED" -ForegroundColor Green; exit 0 } else { Write-Host "$failed CHECK(S) FAILED" -ForegroundColor Red; exit 1 }

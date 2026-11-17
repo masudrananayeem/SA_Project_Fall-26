@@ -1,7 +1,7 @@
 /* Customer portal: light top navigation, centred content. */
 .portal { min-height: 100vh; display: flex; flex-direction: column; }
 .portal-top { background: var(--surface); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 20; }
-.portal-bar { max-width: 1200px; margin: 0 auto; height: 64px; display: flex; align-items: center; gap: 24px; padding: 0 24px; }
+.portal-bar { max-width: 1440px; margin: 0 auto; height: 64px; display: flex; align-items: center; gap: clamp(12px, 2vw, 28px); padding: 0 clamp(14px, 3vw, 32px); }
 .brand-btn { display: flex; align-items: center; gap: 10px; border: none; background: none; cursor: pointer; padding: 0; text-align: left; }
 .brand-btn .logo-mark { background: var(--accent); color: #fff; }
 .brand-btn b { display: block; font-size: 15px; color: var(--text); }
@@ -24,19 +24,18 @@
 .bell-item.unread { background: var(--accent-soft); }
 .bell-empty { padding: 18px 14px; }
 .bell-all { width: 100%; border: none; background: var(--surface-2); padding: 10px; font-weight: 600; color: var(--accent); cursor: pointer; }
-.link-btn { border: none; background: none; color: var(--accent); font-weight: 600; cursor: pointer; font-size: 12.5px; }
-.portal-content { flex: 1; width: 100%; max-width: 1200px; margin: 0 auto; padding: 32px 24px 48px; }
+.portal-content { flex: 1; width: 100%; max-width: 1440px; margin: 0 auto; padding: clamp(18px, 3vw, 40px) clamp(14px, 3vw, 32px) 48px; }
 .portal-foot { text-align: center; color: var(--faint); font-size: 12px; padding: 20px; border-top: 1px solid var(--border); }
 .mobile-only { display: none; }
 .session-banner { position: fixed; top: 16px; left: 50%; transform: translateX(-50%); z-index: 60; }
 
 /* Overview hero */
-.hero { display: grid; grid-template-columns: 1.4fr 1fr; gap: 20px; }
+.hero { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: clamp(14px, 1.6vw, 22px); }
 .hero-main { background: linear-gradient(135deg, var(--accent) 0%, var(--accent-ink) 100%); color: #fff; border: none; position: relative; overflow: hidden; }
 .hero-main::after { content: ''; position: absolute; right: -80px; top: -80px; width: 260px; height: 260px; border-radius: 50%; border: 40px solid rgba(255, 255, 255, 0.07); }
 .hero-main .muted, .hero-main .hero-sub { color: rgba(255, 255, 255, 0.75); }
 .hero-label { display: flex; align-items: center; gap: 8px; font-weight: 600; color: rgba(255, 255, 255, 0.85); }
-.hero-amount { font-size: 52px; font-weight: 750; letter-spacing: -0.03em; margin: 10px 0 4px; font-variant-numeric: tabular-nums; }
+.hero-amount { font-size: clamp(36px, 4vw + 14px, 58px); font-weight: 750; letter-spacing: -0.03em; margin: 10px 0 4px; font-variant-numeric: tabular-nums; }
 .hero-meta { display: flex; gap: 22px; flex-wrap: wrap; margin-top: 18px; }
 .hero-meta div { display: flex; flex-direction: column; }
 .hero-meta span { color: rgba(255, 255, 255, 0.7); font-size: 12.5px; }
@@ -47,11 +46,19 @@
 .due-banner > div { flex: 1; }
 @media (max-width: 900px) {
   .hero { grid-template-columns: 1fr; }
+}
+@media (max-width: 1180px) {
   .portal-nav { display: none; position: absolute; top: 64px; left: 0; right: 0; background: var(--surface); flex-direction: column; padding: 8px; border-bottom: 1px solid var(--border); }
   .portal-nav.open { display: flex; }
   .mobile-only { display: inline-grid; }
   .account-name { display: none; }
-  .portal-content { padding: 20px 16px 40px; }
+}
+@media (max-width: 560px) {
+  .due-banner { flex-wrap: wrap; }
+  .due-banner > div { flex-basis: calc(100% - 40px); }
+  .threshold-row { grid-template-columns: 1fr; }
+  .bell-menu { position: fixed; left: 12px; right: 12px; top: 64px; width: auto; }
+  .brand-btn small { display: none; }
 }
 .threshold-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
 .threshold { border: 1px dashed var(--border-strong); border-radius: var(--radius-sm); padding: 10px 12px; display: flex; flex-direction: column; }

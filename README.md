@@ -15,6 +15,13 @@ MeterFlow is a course-project implementation foundation for usage-based SaaS/API
 - React 19, TypeScript, Vite, npm workspaces monorepo (admin console + customer portal + shared package), Recharts
 - JUnit 5, Mockito, Spring Modulith tests, Testcontainers, k6
 
+## V20 at a glance
+
+- Customers can **sign up** in the portal, pick a plan and subscribe themselves, switch or cancel it, and edit their profile.
+- Admins see **every customer** with plan, live estimate, billed and outstanding amounts; they can create customer logins and disable them.
+- Fluid, responsive layout for phones, tablets, laptops and wide screens.
+- Details: `docs/V20-CHANGELOG.md`.
+
 ## V19 at a glance
 
 - Frontend rebuilt as a monorepo: `frontend/apps/admin` (admin console, port 5173),

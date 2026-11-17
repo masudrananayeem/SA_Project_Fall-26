@@ -135,3 +135,9 @@ export async function signIn(username: string, password: string): Promise<Sessio
   const me = (await res.json()) as { username: string; roles: Role[]; customerId: string | null };
   return { ...me, authorization };
 }
+
+/** Public self-service sign-up (customer portal). Does not sign in. */
+export async function signUp(input: { username: string; password: string; displayName: string; email: string; company?: string }) {
+  const res = await send('/auth/signup', { method: 'POST', body: JSON.stringify(input) }, '');
+  return (await res.json()) as { username: string; customerId: string };
+}

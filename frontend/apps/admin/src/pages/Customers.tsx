@@ -1,90 +1,336 @@
 import { useMemo, useState } from 'react';
-import { Bell, FileText, Search, Users } from 'lucide-react';
+import { Bell, CalendarCheck, Clock, FileText, Receipt, Search, UserPlus, Users } from 'lucide-react';
 import {
-  Badge, Button, Card, Drawer, EstimateBreakdown, Empty, ErrorNote, InvoiceTable, KeyValues, PageHeader, Progress, Spinner, StatusBadge, Table, Tabs,
-  currentPeriod, dateTime, get, money, periodLabel, post, qs, qty, timeAgo, toNumber, useAction, useAsync,
-  type BillingOutcome, type BudgetEvaluation, type CreditAccount, type CustomerNotification, type Estimate, type Invoice, type LateAdjustment, type Subscription, type UsageSummary,
+  Alert, Badge, Button, Card, Drawer, EstimateBreakdown, Empty, ErrorNote, Field, InvoiceTable, KeyValues, Modal, PageHeader, Progress, Spinner, Stat, StatusBadge, Table, Tabs,
+  currentPeriod, date, dateTime, get, isoDay, money, periodLabel, post, qs, qty, timeAgo, toNumber, useAction, useAsync,
+  type Account, type BillingOutcome, type BudgetEvaluation, type CreditAccount, type CustomerNotification, type Estimate, type Invoice, type LateAdjustment, type Plan, type Subscription, type UsageSummary,
 } from '@meterflow/shared';
-import { planLabel, usePlans, useSubscriptions, type Navigate } from '../common';
+import { PlanSelect, latestPlans, planLabel, usePlans, type Navigate } from '../common';
+
+interface Row {
+  id: string;
+  account?: Account;
+  current?: Subscription;
+  subCount: number;
+  billed: number;
+  paid: number;
+  outstanding: number;
+  invoiceCount: number;
+  currency: string;
+}
+
+type Filter = 'all' | 'active' | 'none' | 'overdue';
+
+interface Data {
+  accounts: Account[];
+  subs: Subscription[];
+  invoices: Invoice[];
+}
+
+/** Live estimate for one row; the backend caches estimates for 30 s. */
+function EstimateCell({ customerId, enabled }: { customerId: string; enabled: boolean }) {
+  const est = useAsync(() => (enabled ? get<Estimate>(`/usage/estimate${qs({ customerId })}`) : Promise.resolve(undefined)), [customerId, enabled]);
+  if (!enabled) return <span className="muted">—</span>;
+  if (est.loading && !est.data) return <span className="muted">…</span>;
+  if (!est.data?.lines) return <span className="muted">—</span>;
+  return <span className="strong">{money(est.data.estimatedAmount, est.data.currency)}</span>;
+}
 
 export function CustomersPage({ selected, navigate }: { selected?: string; navigate: Navigate }) {
-  const subs = useSubscriptions();
+  const data = useAsync<Data>(async () => {
+    const [accounts, subs, invoices] = await Promise.all([get<Account[]>('/customers'), get<Subscription[]>('/subscriptions'), get<Invoice[]>('/invoices')]);
+    return { accounts, subs, invoices };
+  }, []);
   const plans = usePlans();
-  const [filter, setFilter] = useState('');
+  const [q, setQ] = useState('');
+  const [filter, setFilter] = useState<Filter>('all');
+  const [creating, setCreating] = useState(false);
 
-  const customers = useMemo(() => {
-    const map = new Map<string, Subscription[]>();
-    subs.data?.forEach((s) => map.set(s.customerId, [...(map.get(s.customerId) || []), s]));
-    return [...map.entries()]
-      .map(([id, list]) => {
-        const sorted = list.slice().sort((a, b) => b.periodStart.localeCompare(a.periodStart));
-        return { id, current: sorted.find((s) => s.status !== 'CANCELLED') || sorted[0], count: list.length };
-      })
-      .filter((c) => c.id.toLowerCase().includes(filter.toLowerCase()))
-      .sort((a, b) => a.id.localeCompare(b.id));
-  }, [subs.data, filter]);
+  const rows = useMemo<Row[]>(() => {
+    const d = data.data;
+    if (!d) return [];
+    const ids = new Set<string>();
+    d.accounts.forEach((a) => ids.add(a.customerId));
+    d.subs.forEach((s) => ids.add(s.customerId));
+    d.invoices.forEach((i) => ids.add(i.customerId));
+    return [...ids].map((id) => {
+      const subs = d.subs.filter((s) => s.customerId === id).sort((a, b) => b.periodStart.localeCompare(a.periodStart));
+      const inv = d.invoices.filter((i) => i.customerId === id);
+      const sum = (xs: Invoice[]) => xs.reduce((a, i) => a + toNumber(i.total), 0);
+      return {
+        id,
+        account: d.accounts.find((a) => a.customerId === id),
+        current: subs.find((s) => s.status !== 'CANCELLED') || subs[0],
+        subCount: subs.length,
+        billed: sum(inv),
+        paid: sum(inv.filter((i) => i.status === 'PAID')),
+        outstanding: sum(inv.filter((i) => i.status === 'FINALISED')),
+        invoiceCount: inv.length,
+        currency: inv[0]?.currency || 'BDT',
+      };
+    });
+  }, [data.data]);
 
+  const shown = rows
+    .filter((r) => {
+      const text = `${r.id} ${r.account?.displayName || ''} ${r.account?.company || ''} ${r.account?.email || ''}`.toLowerCase();
+      if (q && !text.includes(q.toLowerCase())) return false;
+      if (filter === 'active') return r.current?.status === 'ACTIVE';
+      if (filter === 'none') return !r.current || r.current.status === 'CANCELLED';
+      if (filter === 'overdue') return r.outstanding > 0;
+      return true;
+    })
+    .sort((a, b) => (b.account?.createdAt || '').localeCompare(a.account?.createdAt || '') || a.id.localeCompare(b.id));
+
+  const totals = {
+    customers: rows.length,
+    active: rows.filter((r) => r.current?.status === 'ACTIVE').length,
+    billed: rows.reduce((a, r) => a + r.billed, 0),
+    outstanding: rows.reduce((a, r) => a + r.outstanding, 0),
+  };
   const customerId = selected ? decodeURIComponent(selected) : undefined;
+  const selectedRow = rows.find((r) => r.id === customerId);
 
   return (
     <>
-      <PageHeader title="Customers" subtitle="Everyone with a subscription. Open a customer to see live spend, invoices, credits, budget and notifications." />
-      <ErrorNote error={subs.error} onRetry={subs.reload} />
+      <PageHeader
+        title="Customers"
+        subtitle="Every customer: self sign-ups, admin-created logins and customers billed by ID. Open one to see live spend, invoices, credits, budget and notifications."
+        actions={
+          <>
+            <Button onClick={() => data.reload()}>Refresh</Button>
+            <Button variant="primary" icon={<UserPlus size={16} />} onClick={() => setCreating(true)}>
+              New customer
+            </Button>
+          </>
+        }
+      />
+      <ErrorNote error={data.error} onRetry={data.reload} />
+      <div className="stats" style={{ marginBottom: 20 }}>
+        <Stat label="Customers" value={totals.customers} hint={`${data.data?.accounts.length ?? 0} with a login`} icon={<Users size={17} />} />
+        <Stat label="Active subscriptions" value={totals.active} icon={<CalendarCheck size={17} />} tone="good" />
+        <Stat label="Billed to date" value={money(totals.billed)} icon={<Receipt size={17} />} />
+        <Stat label="Outstanding" value={money(totals.outstanding)} icon={<Clock size={17} />} tone={totals.outstanding > 0 ? 'warn' : undefined} />
+      </div>
       <Card className="flush">
         <div className="toolbar">
           <div className="input-icon search">
             <Search size={16} />
-            <input placeholder="Search customer ID" value={filter} onChange={(e) => setFilter(e.target.value)} />
+            <input placeholder="Name, company, email or customer ID" value={q} onChange={(e) => setQ(e.target.value)} />
           </div>
-          <span className="muted small">{customers.length} customers</span>
+          <Tabs
+            value={filter}
+            onChange={setFilter}
+            tabs={[
+              { value: 'all', label: 'All' },
+              { value: 'active', label: 'Active' },
+              { value: 'none', label: 'No plan' },
+              { value: 'overdue', label: 'Owes money' },
+            ]}
+          />
+          <span className="spacer" />
+          <span className="muted small">{shown.length} shown</span>
         </div>
         <div className="flush-body">
-          {subs.loading && !subs.data ? (
+          {data.loading && !data.data ? (
             <Spinner />
-          ) : customers.length ? (
+          ) : shown.length ? (
             <Table>
               <thead>
                 <tr>
                   <th>Customer</th>
-                  <th>Current plan</th>
+                  <th>Plan</th>
                   <th>Status</th>
-                  <th>Seats</th>
-                  <th>Billing period</th>
-                  <th>Subscriptions</th>
+                  <th className="num">This month (est.)</th>
+                  <th className="num">Billed</th>
+                  <th className="num">Outstanding</th>
+                  <th className="hide-sm">Login</th>
+                  <th className="hide-sm">Joined</th>
                 </tr>
               </thead>
               <tbody>
-                {customers.map((c) => (
-                  <tr key={c.id} className="clickable" onClick={() => navigate(`customers/${encodeURIComponent(c.id)}`)}>
-                    <td className="strong">{c.id}</td>
-                    <td>{planLabel(plans.data, c.current.planId)}</td>
+                {shown.map((r) => (
+                  <tr key={r.id} className="clickable" onClick={() => navigate(`customers/${encodeURIComponent(r.id)}`)}>
                     <td>
-                      <StatusBadge status={c.current.status} /> {c.current.trialing && <Badge tone="info">Trial</Badge>}
+                      <div className="cell-person">
+                        <span className="avatar sm">{(r.account?.displayName || r.id).slice(0, 2).toUpperCase()}</span>
+                        <div>
+                          <div className="strong">{r.account?.displayName || r.id}</div>
+                          <div className="muted small">
+                            {r.account?.company ? `${r.account.company} · ` : ''}
+                            <span className="mono">{r.id}</span>
+                          </div>
+                        </div>
+                      </div>
                     </td>
-                    <td>{c.current.seatCount}</td>
-                    <td className="muted">
-                      {c.current.periodStart} → {c.current.periodEnd}
+                    <td>{r.current ? planLabel(plans.data, r.current.planId) : <span className="muted">No plan</span>}</td>
+                    <td>{r.current ? <StatusBadge status={r.current.status} /> : <Badge>None</Badge>}</td>
+                    <td className="num">
+                      <EstimateCell customerId={r.id} enabled={r.current?.status === 'ACTIVE'} />
                     </td>
-                    <td>{c.count}</td>
+                    <td className="num">{money(r.billed, r.currency)}</td>
+                    <td className="num">{r.outstanding > 0 ? <span className="text-warn strong">{money(r.outstanding, r.currency)}</span> : '—'}</td>
+                    <td className="hide-sm">{r.account ? <Badge tone={r.account.enabled ? 'good' : 'bad'}>{r.account.enabled ? 'Active' : 'Disabled'}</Badge> : r.id === 'customer' ? <Badge tone="info">Demo</Badge> : <span className="muted">—</span>}</td>
+                    <td className="hide-sm muted">{date(r.account?.createdAt)}</td>
                   </tr>
                 ))}
               </tbody>
             </Table>
           ) : (
-            <Empty icon={<Users size={22} />} title="No customers yet">
-              Customers appear when they get a subscription.
+            <Empty icon={<Users size={22} />} title="No customers match" action={<Button variant="primary" onClick={() => setCreating(true)}>Add a customer</Button>}>
+              Customers appear when they sign up in the customer portal, when you create one here, or when they get a subscription.
             </Empty>
           )}
         </div>
       </Card>
-      <Drawer open={!!customerId} title={customerId} subtitle="Customer 360" onClose={() => navigate('customers')}>
-        {customerId && <CustomerDetail customerId={customerId} subs={(subs.data || []).filter((s) => s.customerId === customerId)} navigate={navigate} />}
+      <Drawer open={!!customerId} title={selectedRow?.account?.displayName || customerId} subtitle={`Customer 360 · ${customerId}`} onClose={() => navigate('customers')}>
+        {customerId && (
+          <CustomerDetail
+            customerId={customerId}
+            account={selectedRow?.account}
+            subs={(data.data?.subs || []).filter((s) => s.customerId === customerId)}
+            plans={plans.data}
+            navigate={navigate}
+            onChanged={data.reload}
+          />
+        )}
       </Drawer>
+      {creating && (
+        <NewCustomer
+          plans={plans.data}
+          onClose={() => setCreating(false)}
+          onCreated={async (id) => {
+            setCreating(false);
+            await data.reload();
+            navigate(`customers/${encodeURIComponent(id)}`);
+          }}
+        />
+      )}
     </>
   );
 }
 
-function CustomerDetail({ customerId, subs, navigate }: { customerId: string; subs: Subscription[]; navigate: Navigate }) {
+function NewCustomer({ plans, onClose, onCreated }: { plans: Plan[] | undefined; onClose: () => void; onCreated: (id: string) => void }) {
+  const [username, setUsername] = useState('');
+  const [displayName, setDisplayName] = useState('');
+  const [email, setEmail] = useState('');
+  const [company, setCompany] = useState('');
+  const [password, setPassword] = useState('');
+  const [planId, setPlanId] = useState('');
+  const { busy, run } = useAction();
+  const effectivePlan = planId === 'none' ? '' : planId || latestPlans(plans).find((p) => p.planKey === 'starter')?.id || '';
+
+  const create = async () => {
+    const id = username.trim().toLowerCase();
+    const ok = await run(
+      'create',
+      async () => {
+        await post<Account>('/customers', { username: id, password, displayName: displayName.trim(), email: email.trim(), company: company.trim() || undefined });
+        if (effectivePlan) await post<Subscription>('/subscriptions', { customerId: id, planId: effectivePlan, periodStart: isoDay(0), periodEnd: isoDay(365) });
+        return id;
+      },
+      `Customer ${id} created${effectivePlan ? ' and subscribed' : ''}. They can sign in to the customer portal now.`,
+    );
+    if (ok) onCreated(ok);
+  };
+
+  return (
+    <Modal
+      open
+      title="New customer"
+      onClose={onClose}
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button variant="primary" loading={busy === 'create'} disabled={!username.trim() || !displayName.trim() || !email.trim() || password.length < 8} onClick={create}>
+            Create customer
+          </Button>
+        </>
+      }
+    >
+      <div className="form-grid">
+        <Field label="Customer ID (login)" hint="Lowercase letters, digits, - or _">
+          <input value={username} onChange={(e) => setUsername(e.target.value.toLowerCase())} placeholder="acme-ltd" />
+        </Field>
+        <Field label="Temporary password" hint="At least 8 characters; share it securely">
+          <input value={password} onChange={(e) => setPassword(e.target.value)} />
+        </Field>
+        <Field label="Contact name">
+          <input value={displayName} onChange={(e) => setDisplayName(e.target.value)} />
+        </Field>
+        <Field label="Email">
+          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+        </Field>
+        <Field label="Company" wide>
+          <input value={company} onChange={(e) => setCompany(e.target.value)} />
+        </Field>
+        <Field label="Subscribe to plan" wide>
+          <select value={planId || effectivePlan} onChange={(e) => setPlanId(e.target.value)}>
+            <option value="none">Don’t subscribe now</option>
+            {(plans || []).map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name} — {p.planKey} v{p.version}
+              </option>
+            ))}
+          </select>
+        </Field>
+      </div>
+    </Modal>
+  );
+}
+
+function CustomerDetail({ customerId, account, subs, plans, navigate, onChanged }: { customerId: string; account?: Account; subs: Subscription[]; plans: Plan[] | undefined; navigate: Navigate; onChanged: () => Promise<void> }) {
+  const live = subs.find((s) => s.status !== 'CANCELLED');
+  const { busy, run } = useAction();
+  const [planId, setPlanId] = useState('');
+  return (
+    <div className="stack">
+      {account ? (
+        <div className="profile-strip">
+          <KeyValues
+            items={[
+              ['Contact', account.displayName],
+              ['Email', account.email ? <a href={`mailto:${account.email}`}>{account.email}</a> : '—'],
+              ['Company', account.company || '—'],
+              ['Joined', date(account.createdAt)],
+            ]}
+          />
+          <Button
+            size="sm"
+            variant={account.enabled ? 'danger' : 'secondary'}
+            loading={busy === 'en'}
+            onClick={() => run('en', () => post<Account>(`/customers/${encodeURIComponent(customerId)}/enabled${qs({ value: !account.enabled })}`), account.enabled ? 'Login disabled.' : 'Login enabled.').then(onChanged)}
+          >
+            {account.enabled ? 'Disable login' : 'Enable login'}
+          </Button>
+        </div>
+      ) : (
+        <Alert>{customerId === 'customer' ? 'Built-in demo customer (login from configuration).' : 'No portal login for this customer ID. Create one with “New customer” using the same ID.'}</Alert>
+      )}
+      {!live && (
+        <div className="inline-form">
+          <Field label="Subscribe this customer">
+            <PlanSelect plans={plans} value={planId || latestPlans(plans)[0]?.id || ''} onChange={setPlanId} />
+          </Field>
+          <Button
+            variant="primary"
+            loading={busy === 'sub'}
+            onClick={() =>
+              run('sub', () => post<Subscription>('/subscriptions', { customerId, planId: planId || latestPlans(plans)[0]?.id, periodStart: isoDay(0), periodEnd: isoDay(365) }), 'Subscription created.').then(onChanged)
+            }
+          >
+            Subscribe
+          </Button>
+        </div>
+      )}
+      <CustomerTabs customerId={customerId} subs={subs} navigate={navigate} />
+    </div>
+  );
+}
+
+function CustomerTabs({ customerId, subs, navigate }: { customerId: string; subs: Subscription[]; navigate: Navigate }) {
   const [tab, setTab] = useState<'spend' | 'invoices' | 'account' | 'activity'>('spend');
   const period = currentPeriod();
   const plans = usePlans();

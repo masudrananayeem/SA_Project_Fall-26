@@ -334,3 +334,23 @@ export interface LateAdjustment {
   invoiceId: string | null;
   resolvedAt: string | null;
 }
+
+export interface Account {
+  username: string;
+  customerId: string;
+  displayName: string;
+  email: string | null;
+  company: string | null;
+  enabled: boolean;
+  createdAt: string | null;
+  /** false for the built-in demo customer, which has no stored profile. */
+  stored: boolean;
+}
+
+export interface SignUpInput {
+  username: string;
+  password: string;
+  displayName: string;
+  email: string;
+  company?: string;
+}

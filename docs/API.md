@@ -148,3 +148,16 @@ it for demos (`METERFLOW_ALLOW_OPEN_PERIOD`).
 
 Browser clients send `X-Requested-With: XMLHttpRequest`; with that header a failed login returns a JSON 401
 without `WWW-Authenticate` (no browser popup). Other clients keep the standard Basic challenge.
+
+## V20 endpoints (accounts and self-service)
+| Method | Route | Role | Purpose |
+|---|---|---|---|
+| POST | `/api/auth/signup` | public | `{username, password, displayName, email, company?}`: creates a customer login; username = customer ID |
+| GET | `/api/account` | signed in | Own profile (`stored=false` for the built-in demo customer) |
+| PUT | `/api/account` | CUSTOMER | Update own name, email, company |
+| GET | `/api/customers` | ADMIN | All stored customer accounts |
+| POST | `/api/customers` | ADMIN | Create a login (also for an existing customer ID) |
+| POST | `/api/customers/{username}/enabled?value=true\|false` | ADMIN | Enable or disable a login |
+| POST | `/api/subscriptions/self` | CUSTOMER | `{planId, seatCount?}`: subscribe yourself (starts today, one live subscription) |
+| POST | `/api/subscriptions/{id}/change-plan` | ADMIN or owner | Now also for the customer that owns the subscription |
+| POST | `/api/subscriptions/{id}/cancel` | ADMIN or owner | Now also for the customer that owns the subscription |

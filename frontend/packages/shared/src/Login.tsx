@@ -14,9 +14,12 @@ export interface LoginProps {
   /** Shown only for local demos; never ship real credentials in a public build. */
   demoAccount?: { username: string; password: string };
   onSignedIn: (s: Session) => void;
+  /** Optional alternative form (e.g. sign-up) shown instead of the sign-in form. */
+  alternate?: { prompt: string; action: string; render: (back: () => void) => ReactNode };
 }
 
-export function Login({ expectedRole, appTitle, appSubtitle, highlights, otherApp, demoAccount, onSignedIn }: LoginProps) {
+export function Login({ expectedRole, appTitle, appSubtitle, highlights, otherApp, demoAccount, onSignedIn, alternate }: LoginProps) {
+  const [showAlt, setShowAlt] = useState(false);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [show, setShow] = useState(false);
@@ -74,6 +77,9 @@ export function Login({ expectedRole, appTitle, appSubtitle, highlights, otherAp
       </div>
 
       <div className="login-panel">
+        {showAlt && alternate ? (
+          alternate.render(() => setShowAlt(false))
+        ) : (
         <form className="login-form" onSubmit={submit} noValidate>
           <h2>Sign in</h2>
           <p className="muted">{expectedRole === 'ADMIN' ? 'Admin console access' : 'Access your billing account'}</p>
@@ -125,10 +131,20 @@ export function Login({ expectedRole, appTitle, appSubtitle, highlights, otherAp
             </button>
           )}
 
+          {alternate && (
+            <div className="login-alt">
+              {alternate.prompt}{' '}
+              <button type="button" className="link-btn" onClick={() => setShowAlt(true)}>
+                {alternate.action}
+              </button>
+            </div>
+          )}
+
           <div className="login-switch">
             Looking for the {otherApp.label}? <a href={otherApp.url}>Go there</a>
           </div>
         </form>
+        )}
       </div>
     </div>
   );

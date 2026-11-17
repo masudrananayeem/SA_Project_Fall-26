@@ -12,8 +12,6 @@ import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
-import org.springframework.security.core.userdetails.*;
-import org.springframework.security.provisioning.InMemoryUserDetailsManager;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.jwt.Jwt;
@@ -34,19 +32,14 @@ public class SecurityConfig {
         return new BCryptPasswordEncoder(Math.max(4, Math.min(31, strength)));
     }
 
-    @Bean @Profile("!prod") UserDetailsService users(
-            @Value("${meterflow.security.admin-user}") String adminUser,
-            @Value("${meterflow.security.admin-password}") String adminPassword,
-            @Value("${meterflow.security.customer-user}") String customerUser,
-            @Value("${meterflow.security.customer-password}") String customerPassword, PasswordEncoder encoder) {
-        return new InMemoryUserDetailsManager(
-                User.withUsername(adminUser).password(encoder.encode(adminPassword)).roles("ADMIN").build(),
-                User.withUsername(customerUser).password(encoder.encode(customerPassword)).roles("CUSTOMER").build());
-    }
+    // The local/cloud user store (configured admin + demo customer + sign-up accounts) is
+    // accounts.AccountUserDetailsService.
 
     @Bean @Profile("!prod") SecurityFilterChain localFilter(HttpSecurity http) throws Exception {
         return http.cors(Customizer.withDefaults()).csrf(csrf -> csrf.disable())
-                .authorizeHttpRequests(a -> a.requestMatchers("/actuator/health/**", "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll().anyRequest().authenticated())
+                .authorizeHttpRequests(a -> a.requestMatchers("/actuator/health/**", "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
+                        .requestMatchers(org.springframework.http.HttpMethod.POST, "/api/auth/signup").permitAll()
+                        .anyRequest().authenticated())
                 .httpBasic(b -> b.authenticationEntryPoint(basicEntryPoint())).build();
     }
 

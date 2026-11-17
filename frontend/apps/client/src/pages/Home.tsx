@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { AlertCircle, ArrowRight, CreditCard, PiggyBank, RefreshCw } from 'lucide-react';
+import { AlertCircle, ArrowRight, CreditCard, Layers, PiggyBank, RefreshCw } from 'lucide-react';
 import {
   Button, Card, CardHeader, EstimateBreakdown, ErrorNote, InvoiceTable, PageHeader, Progress, Spinner,
   currentPeriod, get, invoiceNo, money, periodLabel, post, qs, qty, toNumber, useAction, useAsync,
@@ -72,6 +72,22 @@ export function HomePage({ customerId, navigate }: { customerId: string; navigat
         ))}
 
         <ErrorNote error={estimate.error} onRetry={estimate.reload} />
+        {e && !hasPlan && (
+          <Card className="callout">
+            <div className="callout-body">
+              <span className="callout-icon">
+                <Layers size={20} />
+              </span>
+              <div>
+                <h3>Choose a plan to get started</h3>
+                <p className="muted">You don’t have an active subscription yet. Pick a plan, then send usage events with your customer ID <code>{customerId}</code> and watch your bill here live.</p>
+              </div>
+              <Button variant="primary" onClick={() => navigate('plans')}>
+                See plans
+              </Button>
+            </div>
+          </Card>
+        )}
         <div className="hero">
           <Card className="hero-main">
             <div className="row-between">

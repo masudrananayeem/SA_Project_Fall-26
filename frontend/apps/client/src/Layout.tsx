@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { Activity, Bell, CreditCard, FileText, Home, LogOut, Menu, PiggyBank, X } from 'lucide-react';
+import { Activity, Bell, FileText, Home, Layers, LogOut, Menu, PiggyBank, UserCircle, X } from 'lucide-react';
 import { get, qs, timeAgo, useAsync, type CustomerNotification, type Session } from '@meterflow/shared';
 
 export const NAV = [
   { key: 'home', label: 'Overview', icon: Home },
   { key: 'usage', label: 'Usage', icon: Activity },
   { key: 'invoices', label: 'Invoices', icon: FileText },
-  { key: 'budget', label: 'Budget & alerts', icon: PiggyBank },
-  { key: 'account', label: 'Plan & credits', icon: CreditCard },
+  { key: 'budget', label: 'Budget', icon: PiggyBank },
+  { key: 'plans', label: 'Plans', icon: Layers },
+  { key: 'account', label: 'Account', icon: UserCircle },
 ] as const;
 
 const SEEN_KEY = 'meterflow.client.seenNotifications';
