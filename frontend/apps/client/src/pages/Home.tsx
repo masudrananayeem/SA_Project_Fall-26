@@ -1,0 +1,158 @@
+import { useEffect, useState } from 'react';
+import { AlertCircle, ArrowRight, CreditCard, PiggyBank, RefreshCw } from 'lucide-react';
+import {
+  Button, Card, CardHeader, EstimateBreakdown, ErrorNote, InvoiceTable, PageHeader, Progress, Spinner,
+  currentPeriod, get, invoiceNo, money, periodLabel, post, qs, qty, toNumber, useAction, useAsync,
+  type BudgetEvaluation, type Estimate, type Invoice, type PaymentResult,
+} from '@meterflow/shared';
+
+export function useLiveEstimate(customerId: string) {
+  const period = currentPeriod();
+  const estimate = useAsync(() => get<Estimate>(`/usage/estimate${qs({ customerId, period })}`), [customerId]);
+  const every = estimate.data?.refreshSeconds || 30;
+  const [left, setLeft] = useState(every);
+  useEffect(() => {
+    setLeft(every);
+    const t = setInterval(() => {
+      setLeft((s) => {
+        if (s <= 1) {
+          void estimate.reload();
+          return every;
+        }
+        return s - 1;
+      });
+    }, 1000);
+    return () => clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [every, customerId]);
+  return { estimate, left };
+}
+
+export function HomePage({ customerId, navigate }: { customerId: string; navigate: (to: string) => void }) {
+  const period = currentPeriod();
+  const { estimate, left } = useLiveEstimate(customerId);
+  const invoices = useAsync(() => get<Invoice[]>(`/invoices${qs({ customerId })}`), [customerId]);
+  const budget = useAsync<BudgetEvaluation>(async () => {
+    const b = await get<BudgetEvaluation>(`/budgets${qs({ customerId, period })}`);
+    return b.status === 'NO_BUDGET' ? b : get<BudgetEvaluation>(`/budgets/evaluate${qs({ customerId, period })}`);
+  }, [customerId]);
+  const { busy, run } = useAction();
+
+  const e = estimate.data;
+  const open = (invoices.data || []).filter((i) => i.status === 'FINALISED' && toNumber(i.total) > 0);
+  const hasPlan = !!e?.lines;
+
+  return (
+    <>
+      <PageHeader eyebrow={periodLabel(period)} title={`Welcome back, ${customerId}`} subtitle="Your usage and spend for the current billing period." />
+      <div className="stack">
+        {open.map((i) => (
+          <div key={i.id} className="due-banner">
+            <AlertCircle size={20} color="#b54708" />
+            <div>
+              <b>
+                {invoiceNo(i.id)} for {periodLabel(i.period)} is due — {money(i.total, i.currency)}
+              </b>
+              <div className="muted small">Pay now to avoid payment retries and service suspension.</div>
+            </div>
+            <Button variant="ghost" onClick={() => navigate(`invoices/${i.id}`)}>
+              View
+            </Button>
+            <Button
+              variant="primary"
+              icon={<CreditCard size={16} />}
+              loading={busy === i.id}
+              onClick={() =>
+                run(i.id, () => post<PaymentResult>(`/payments/mock/${i.id}/pay`), (r) => (r.paymentStatus === 'SUCCEEDED' ? 'Payment received. Thank you!' : `Payment ${r.paymentStatus.toLowerCase()}`)).then(() => invoices.reload())
+              }
+            >
+              Pay now
+            </Button>
+          </div>
+        ))}
+
+        <ErrorNote error={estimate.error} onRetry={estimate.reload} />
+        <div className="hero">
+          <Card className="hero-main">
+            <div className="row-between">
+              <span className="hero-label">
+                <span className="dot live" /> Estimated bill so far
+              </span>
+              <span className="refresh-ring">
+                <RefreshCw size={12} className={estimate.loading ? 'spin' : undefined} /> updates in {left}s
+              </span>
+            </div>
+            {!e ? (
+              <div className="hero-amount">…</div>
+            ) : (
+              <>
+                <div className="hero-amount">{money(e.estimatedAmount, e.currency)}</div>
+                <div className="hero-sub">{hasPlan ? `${e.plan} · includes ${toNumber(e.taxRate)}% VAT` : e.note || 'No active subscription for this period'}</div>
+                {hasPlan && (
+                  <div className="hero-meta">
+                    <div>
+                      <span>Billable {e.billableMetric}</span>
+                      <b>{qty(e.billableQuantity)}</b>
+                    </div>
+                    <div>
+                      <span>Usage events</span>
+                      <b>{(e.eventCount ?? 0).toLocaleString()}</b>
+                    </div>
+                    <div>
+                      <span>Subtotal</span>
+                      <b>{money(e.estimatedSubtotal, e.currency)}</b>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </Card>
+          <Card>
+            <CardHeader title={<span className="row"><PiggyBank size={18} /> Monthly budget</span>} actions={<Button size="sm" variant="ghost" onClick={() => navigate('budget')}>Manage</Button>} />
+            {budget.loading && !budget.data ? (
+              <Spinner />
+            ) : budget.data?.status === 'NO_BUDGET' || !budget.data ? (
+              <div className="stack-sm">
+                <p className="muted" style={{ margin: 0 }}>
+                  Set a budget to get alerts at 50%, 80% and 100% of your spend.
+                </p>
+                <div>
+                  <Button variant="subtle" icon={<ArrowRight size={16} />} onClick={() => navigate('budget')}>
+                    Set a budget
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className="stack-sm">
+                <div className="big-number" style={{ fontSize: 34 }}>
+                  {toNumber(budget.data.percentUsed)}%
+                </div>
+                <Progress value={toNumber(budget.data.percentUsed)} />
+                <div className="muted small">
+                  {money(budget.data.estimatedAmount, budget.data.currency)} of {money(budget.data.budget, budget.data.currency)}
+                </div>
+              </div>
+            )}
+          </Card>
+        </div>
+
+        <div className="grid-2">
+          <Card>
+            <CardHeader title="How your estimate is calculated" subtitle="Same rules as your invoice. The invoice at month end will match this." />
+            {e ? <EstimateBreakdown estimate={e} /> : <Spinner />}
+          </Card>
+          <Card className="flush">
+            <CardHeader title="Recent invoices" actions={<Button size="sm" variant="ghost" onClick={() => navigate('invoices')}>All invoices</Button>} />
+            <div className="flush-body">
+              {invoices.loading && !invoices.data ? (
+                <Spinner />
+              ) : (
+                <InvoiceTable invoices={(invoices.data || []).slice(0, 5)} showCustomer={false} onOpen={(i) => navigate(`invoices/${i.id}`)} empty="Your first invoice is created at the end of the billing period." />
+              )}
+            </div>
+          </Card>
+        </div>
+      </div>
+    </>
+  );
+}

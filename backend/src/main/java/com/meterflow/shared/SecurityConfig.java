@@ -18,7 +18,9 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
+import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.www.BasicAuthenticationEntryPoint;
 import org.springframework.web.cors.*;
 import java.util.stream.Collectors;
 
@@ -45,7 +47,27 @@ public class SecurityConfig {
     @Bean @Profile("!prod") SecurityFilterChain localFilter(HttpSecurity http) throws Exception {
         return http.cors(Customizer.withDefaults()).csrf(csrf -> csrf.disable())
                 .authorizeHttpRequests(a -> a.requestMatchers("/actuator/health/**", "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll().anyRequest().authenticated())
-                .httpBasic(Customizer.withDefaults()).build();
+                .httpBasic(b -> b.authenticationEntryPoint(basicEntryPoint())).build();
+    }
+
+    /**
+     * Browser apps (admin console, customer portal) send X-Requested-With: XMLHttpRequest. For them a
+     * failed login is a plain JSON 401 without a WWW-Authenticate challenge, so the browser does not
+     * open its native sign-in popup and the app can show its own error. Other clients (curl, Swagger,
+     * smoke test) keep the standard Basic challenge.
+     */
+    static AuthenticationEntryPoint basicEntryPoint() {
+        var basic = new BasicAuthenticationEntryPoint();
+        basic.setRealmName("MeterFlow");
+        return (request, response, ex) -> {
+            if ("XMLHttpRequest".equalsIgnoreCase(request.getHeader("X-Requested-With"))) {
+                response.setStatus(401);
+                response.setContentType("application/problem+json");
+                response.getWriter().write("{\"title\":\"Unauthorized\",\"status\":401,\"detail\":\"Invalid or missing credentials\"}");
+            } else {
+                basic.commence(request, response, ex);
+            }
+        };
     }
 
     @Bean @Profile("prod") SecurityFilterChain productionFilter(HttpSecurity http) throws Exception {
@@ -65,11 +87,11 @@ public class SecurityConfig {
     }
 
     @Bean CorsConfigurationSource corsConfigurationSource(
-            @Value("${meterflow.cors.allowed-origins:http://localhost:5173}") String allowedOrigins) {
+            @Value("${meterflow.cors.allowed-origins:http://localhost:5173,http://localhost:5174}") String allowedOrigins) {
         CorsConfiguration c = new CorsConfiguration();
         c.setAllowedOrigins(Arrays.stream(allowedOrigins.split(",")).map(String::trim).filter(x -> !x.isBlank()).toList());
         c.setAllowedMethods(List.of("GET","POST","PUT","PATCH","DELETE","OPTIONS"));
-        c.setAllowedHeaders(List.of("Authorization","Content-Type","X-Correlation-ID"));
+        c.setAllowedHeaders(List.of("Authorization","Content-Type","X-Correlation-ID","X-Requested-With"));
         c.setExposedHeaders(List.of("X-Correlation-ID")); c.setAllowCredentials(false);
         UrlBasedCorsConfigurationSource s = new UrlBasedCorsConfigurationSource(); s.registerCorsConfiguration("/**", c); return s;
     }

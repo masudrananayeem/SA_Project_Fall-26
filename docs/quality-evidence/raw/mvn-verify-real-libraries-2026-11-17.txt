@@ -1,0 +1,37 @@
+PS D:\Web Development\SA_Project_Fall-26\backend> docker run --rm -v "${PWD}:/app" -v meterflow-m2:/root/.m2 -w /app maven:3.9-eclipse-temurin-21 mvn verify 2>&1 | Select-String "ERROR|FAIL|Tests run:|BUILD" | Select-Object -First 60
+
+[INFO] Building MeterFlow 2.0.0
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 10.88 s -- in com.meterflow.ArchitectureTests
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.062 s -- in com.meterflow.budgets.BudgetThresholdTest
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 1.737 s -- in com.meterflow.catalogue.charges.ChargeRegistryExtensionTest
+[INFO] Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.041 s -- in com.meterflow.catalogue.charges.ChargeStrategiesTest
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.029 s -- in com.meterflow.catalogue.PriceQuoteTest
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.032 s -- in com.meterflow.catalogue.PricingServiceTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.002 s -- in com.meterflow.credits.CreditAccountTest
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.037 s -- in com.meterflow.invoicing.batch.CustomerIdItemReaderTest
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.016 s -- in com.meterflow.invoicing.batch.PartitionCustomerReaderTest
+Mockito is currently self-attaching to enable the inline-mock-maker. This will no longer work in future releases of the JDK. Please add Mockito as an agent to your build as 
+described in Mockito's documentation: https://javadoc.io/doc/org.mockito/mockito-core/latest/org.mockito/org/mockito/Mockito.html#0.3
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 4.501 s -- in com.meterflow.invoicing.BillableMetricBillingTest
+[INFO] Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.133 s -- in com.meterflow.invoicing.BillingRunTest
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.011 s -- in com.meterflow.invoicing.InvoiceDocumentTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.008 s -- in com.meterflow.invoicing.InvoiceLineProvenanceTest
+[INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.017 s -- in com.meterflow.metering.aggregation.MetricAggregationTest
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.059 s -- in com.meterflow.metering.LiveSpendServiceTest
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.006 s -- in com.meterflow.metering.MetricAggregationEndpointLogicTest
+[INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.028 s -- in com.meterflow.metering.UsageServiceIngestionTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.081 s -- in com.meterflow.payments.DunningCaseTest
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 1.020 s -- in com.meterflow.qa.Qa1AccuracyTest
+[INFO] Tests run: 9, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.032 s -- in com.meterflow.subscriptions.SubscriptionLifecycleTest
+[INFO] Tests run: 65, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Building jar: /app/target/meterflow-2.0.0.jar
+Downloading from central: https://repo.maven.apache.org/maven2/org/springframework/boot/spring-boot-buildpack-platform/3.5.16/spring-boot-buildpack-platform-3.5.16.pom
+Downloaded from central: https://repo.maven.apache.org/maven2/org/springframework/boot/spring-boot-buildpack-platform/3.5.16/spring-boot-buildpack-platform-3.5.16.pom (3.2 kB 
+at 19 kB/s)
+Downloading from central: https://repo.maven.apache.org/maven2/org/springframework/boot/spring-boot-buildpack-platform/3.5.16/spring-boot-buildpack-platform-3.5.16.jar
+Downloaded from central: https://repo.maven.apache.org/maven2/org/springframework/boot/spring-boot-buildpack-platform/3.5.16/spring-boot-buildpack-platform-3.5.16.jar (325 kB 
+at 2.2 MB/s)
+[INFO] BUILD SUCCESS
+
+
+PS D:\Web Development\SA_Project_Fall-26\backend> 

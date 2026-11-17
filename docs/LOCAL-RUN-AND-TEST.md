@@ -34,12 +34,15 @@ docker compose logs -f backend
 
 Open:
 
-- Frontend: http://localhost:5173
+- Admin console: http://localhost:5173 (sign in as `admin`)
+- Customer portal: http://localhost:5174 (sign in as `customer`)
 - Backend health: http://localhost:8080/actuator/health
 - Swagger UI: http://localhost:8080/swagger-ui.html
 - OpenAPI JSON: http://localhost:8080/v3/api-docs
 
-The local demo accounts are `admin` / `meterflow-admin` and `customer` / `meterflow-customer` unless changed in `.env`. These are local-only defaults. In the UI, open **Settings**, enter the account credentials, and save them. Do not put credentials in `VITE_*` variables; Vite bundles those into browser assets.
+The local demo accounts are `admin` / `meterflow-admin` and `customer` / `meterflow-customer` unless changed in `.env`. These are local-only defaults. Each app opens on its own login page; the admin console accepts only the ADMIN role and the customer portal only the CUSTOMER role (the other account gets a link to the right app). Do not put credentials in `VITE_*` variables; Vite bundles those into browser assets.
+
+First-time demo: sign in to the admin console and click **Prepare demo** on the Overview page. It subscribes the `customer` account to the Starter plan and sends 1,800 usage events for this month, so the customer portal shows live spend immediately.
 
 Stop without deleting the database:
 
@@ -81,16 +84,16 @@ cd backend
 mvn spring-boot:run
 ```
 
-Terminal 2 — frontend:
+Terminal 2 — admin console, Terminal 3 — customer portal:
 
 ```powershell
 cd frontend
-Copy-Item .env.example .env
-npm install
-npm run dev
+npm install          # once, installs all workspaces
+npm run dev:admin    # http://localhost:5173
+npm run dev:client   # http://localhost:5174 (second terminal)
 ```
 
-Vite proxies `/api` requests to `http://localhost:8080` in development.
+Vite proxies `/api` requests to `http://localhost:8080` in development, so `VITE_API_URL` stays empty locally.
 
 ## 4. Backend automated tests
 
@@ -108,11 +111,11 @@ Some integration tests use Testcontainers and therefore need Docker running. A s
 
 ```powershell
 cd frontend
-npm install
-npm run build
+npm ci
+npm run build        # type-checks and builds both apps
 ```
 
-The production build is written to `frontend/dist`.
+The production builds are written to `frontend/apps/admin/dist` and `frontend/apps/client/dist`.
 
 ## 6. API smoke tests
 
@@ -155,7 +158,7 @@ Keep raw logs, CSV/JSON outputs, environment details and commit hash under `docs
 ## 8. Troubleshooting
 
 - `docker compose` cannot connect: start Docker Desktop and wait until Engine is ready.
-- Port 5432/6379/8080/5173 already in use: stop the conflicting service or change the host-side port mapping in `docker-compose.yml`.
+- Port 5432/6379/8080/5173/5174 already in use: stop the conflicting service or change the host-side port mapping in `docker-compose.yml`.
 - Backend exits during startup: inspect `docker compose logs backend`; verify PostgreSQL health and `.env` values.
 - Frontend shows 401: open Settings and enter the correct API username/password. Clear stale values by clearing site local storage.
 - Frontend cannot reach API: verify `VITE_API_URL` and the backend health endpoint.

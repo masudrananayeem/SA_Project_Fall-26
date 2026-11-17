@@ -42,10 +42,19 @@ services:
     depends_on:
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }
-  frontend:
-    build: ./frontend
+  admin:
+    build:
+      context: ./frontend
+      args: { APP: admin }
     ports: ["5173:80"]
-    mem_limit: 512m
+    mem_limit: 256m
+    depends_on: [backend]
+  client:
+    build:
+      context: ./frontend
+      args: { APP: client }
+    ports: ["5174:80"]
+    mem_limit: 256m
     depends_on: [backend]
 volumes:
   pgdata:

@@ -6,14 +6,26 @@
 **Section:** 64-K  
 **Project:** Project 2 — MeterFlow
 
-MeterFlow is a course-project implementation foundation for usage-based SaaS/API billing. It uses a Spring Boot modular monolith and a React customer/admin console. Version 2 adds an extensible pricing strategy registry, a reusable metric aggregation engine, and subscription-aware live estimates.
+MeterFlow is a course-project implementation foundation for usage-based SaaS/API billing. It uses a Spring Boot modular monolith (backend) and a React frontend monorepo with two apps: an admin console and a customer portal. Version 2 adds an extensible pricing strategy registry, a reusable metric aggregation engine, and subscription-aware live estimates.
 
 ## Technology
 - Java 21, Spring Boot 3.5.16, Spring Modulith 1.4 (event publication registry), Maven (see ADR-005)
 - Spring Data JPA, Spring Batch starter, Spring Security, Actuator, SpringDoc
 - PostgreSQL 17, Redis 7
-- React 19, TypeScript, Vite, Tailwind CSS
+- React 19, TypeScript, Vite, npm workspaces monorepo (admin console + customer portal + shared package), Recharts
 - JUnit 5, Mockito, Spring Modulith tests, Testcontainers, k6
+
+## V19 at a glance
+
+- Frontend rebuilt as a monorepo: `frontend/apps/admin` (admin console, port 5173),
+  `frontend/apps/client` (customer portal, port 5174) and `frontend/packages/shared`.
+- Login page first; the admin console accepts only ADMIN accounts, the portal only CUSTOMER accounts
+  (role checked with the new `GET /api/me`). No more browser sign-in popup.
+- Every backend feature is usable from the UI: plans with charge components and versions,
+  migration preview, subscriptions (trial, seats, prorated plan change), ingestion with duplicate
+  replay, aggregation queries, billing runs, batch job, simulator, invoices with line trace,
+  payments, dunning fast-forward, credits, budgets, notifications, webhooks.
+- Details: `docs/V19-CHANGELOG.md`, decision: `docs/ADR/ADR-007-frontend-monorepo.md`.
 
 ## V18 at a glance
 
@@ -46,7 +58,8 @@ docker compose up --build
 ```
 
 Open:
-- Frontend: http://localhost:5173
+- Admin console: http://localhost:5173
+- Customer portal: http://localhost:5174
 - API: http://localhost:8080/api
 - Swagger UI: http://localhost:8080/swagger-ui/index.html
 - Health: http://localhost:8080/actuator/health
@@ -62,15 +75,17 @@ cd backend
 mvn spring-boot:run
 ```
 
-Frontend (requires Node.js 22+):
+Frontend monorepo (requires Node.js 22+): `frontend/apps/admin` (admin console),
+`frontend/apps/client` (customer portal), `frontend/packages/shared` (API client, login, UI kit).
 
 ```bash
 cd frontend
 npm ci
-npm run dev
+npm run dev:admin    # http://localhost:5173
+npm run dev:client   # http://localhost:5174
 ```
 
-The frontend uses same-origin `/api` requests. When running Vite separately, set `VITE_API_URL` if your API is not available at the Vite origin and configure backend CORS/reverse proxy accordingly.
+Both apps use same-origin `/api` requests (Vite proxy locally, nginx in Docker). On Vercel set `VITE_API_URL` to the backend origin. See [`frontend/README.md`](frontend/README.md).
 
 ## Key API routes
 

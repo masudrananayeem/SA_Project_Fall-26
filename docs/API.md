@@ -140,3 +140,11 @@ timestamp is more than 5 minutes old.
 Invoices cover calendar months (UTC). The scheduled billing date is 00:30 UTC on the 1st for the
 month that just closed. In the prod profile an open month cannot be billed; the dev profile allows
 it for demos (`METERFLOW_ALLOW_OPEN_PERIOD`).
+
+## V19 endpoints
+| Method | Route | Role | Purpose |
+|---|---|---|---|
+| GET | `/api/me` | any signed-in user | `{ username, roles, customerId }`: used by the admin console and customer portal right after login to check the credentials and the role |
+
+Browser clients send `X-Requested-With: XMLHttpRequest`; with that header a failed login returns a JSON 401
+without `WWW-Authenticate` (no browser popup). Other clients keep the standard Basic challenge.
