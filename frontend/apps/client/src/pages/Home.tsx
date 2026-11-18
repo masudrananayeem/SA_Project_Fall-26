@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
 import { AlertCircle, ArrowRight, CreditCard, Layers, PiggyBank, RefreshCw } from 'lucide-react';
 import {
-  Button, Card, CardHeader, EstimateBreakdown, ErrorNote, InvoiceTable, PageHeader, Progress, Spinner,
-  currentPeriod, get, invoiceNo, money, periodLabel, post, qs, qty, toNumber, useAction, useAsync,
-  type BudgetEvaluation, type Estimate, type Invoice, type PaymentResult,
+  Button, Card, CardHeader, EstimateBreakdown, ErrorNote, InvoiceTable, PageHeader, PayInvoiceModal, Progress, Spinner,
+  currentPeriod, get, invoiceNo, money, periodLabel, qs, qty, toNumber, useAsync,
+  type BudgetEvaluation, type Estimate, type Invoice,
 } from '@meterflow/shared';
 
 export function useLiveEstimate(customerId: string) {
@@ -36,7 +36,7 @@ export function HomePage({ customerId, navigate }: { customerId: string; navigat
     const b = await get<BudgetEvaluation>(`/budgets${qs({ customerId, period })}`);
     return b.status === 'NO_BUDGET' ? b : get<BudgetEvaluation>(`/budgets/evaluate${qs({ customerId, period })}`);
   }, [customerId]);
-  const { busy, run } = useAction();
+  const [paying, setPaying] = useState<Invoice | null>(null);
 
   const e = estimate.data;
   const open = (invoices.data || []).filter((i) => i.status === 'FINALISED' && toNumber(i.total) > 0);
@@ -44,6 +44,16 @@ export function HomePage({ customerId, navigate }: { customerId: string; navigat
 
   return (
     <>
+      {paying && (
+        <PayInvoiceModal
+          invoice={paying}
+          onClose={() => setPaying(null)}
+          onPaid={() => {
+            setPaying(null);
+            void invoices.reload();
+          }}
+        />
+      )}
       <PageHeader eyebrow={periodLabel(period)} title={`Welcome back, ${customerId}`} subtitle="Your usage and spend for the current billing period." />
       <div className="stack">
         {open.map((i) => (
@@ -53,19 +63,12 @@ export function HomePage({ customerId, navigate }: { customerId: string; navigat
               <b>
                 {invoiceNo(i.id)} for {periodLabel(i.period)} is due — {money(i.total, i.currency)}
               </b>
-              <div className="muted small">Pay now to avoid payment retries and service suspension.</div>
+              <div className="muted small">Payment pending. Nothing is charged until you pay.</div>
             </div>
             <Button variant="ghost" onClick={() => navigate(`invoices/${i.id}`)}>
               View
             </Button>
-            <Button
-              variant="primary"
-              icon={<CreditCard size={16} />}
-              loading={busy === i.id}
-              onClick={() =>
-                run(i.id, () => post<PaymentResult>(`/payments/mock/${i.id}/pay`), (r) => (r.paymentStatus === 'SUCCEEDED' ? 'Payment received. Thank you!' : `Payment ${r.paymentStatus.toLowerCase()}`)).then(() => invoices.reload())
-              }
-            >
+            <Button variant="primary" icon={<CreditCard size={16} />} onClick={() => setPaying(i)}>
               Pay now
             </Button>
           </div>

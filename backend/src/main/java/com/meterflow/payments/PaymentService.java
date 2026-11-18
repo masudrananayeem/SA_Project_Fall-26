@@ -36,11 +36,13 @@ public class PaymentService {
     private final ApplicationEventPublisher events;
     private final TransactionTemplate transactions;
     private final Duration grace;
+    private final boolean autoCollect;
 
     public PaymentService(InvoiceRepository invoices, DunningRepository cases, SubscriptionRepository subscriptions,
                           MockPaymentProvider provider, ApplicationEventPublisher events,
                           PlatformTransactionManager transactionManager,
-                          @Value("${meterflow.dunning.past-due-grace-days:7}") long graceDays) {
+                          @Value("${meterflow.dunning.past-due-grace-days:7}") long graceDays,
+                          @Value("${meterflow.payments.auto-collect:false}") boolean autoCollect) {
         this.invoices = invoices;
         this.cases = cases;
         this.subscriptions = subscriptions;
@@ -48,11 +50,28 @@ public class PaymentService {
         this.events = events;
         this.transactions = new TransactionTemplate(transactionManager);
         this.grace = Duration.ofDays(graceDays);
+        this.autoCollect = autoCollect;
     }
 
-    /** Automatic collection after finalisation (asynchronous, after the billing transaction commits). */
+    /**
+     * After finalisation (asynchronous, after the billing transaction commits). By default nothing is
+     * charged: the invoice stays FINALISED (payment pending) until the customer pays it or an admin
+     * collects it. With meterflow.payments.auto-collect=true the card on file is charged right away.
+     */
     @ApplicationModuleListener
-    public void on(InvoiceFinalised finalised) { collect(finalised.invoiceId()); }
+    public void on(InvoiceFinalised finalised) {
+        if (autoCollect) {
+            collect(finalised.invoiceId());
+            return;
+        }
+        // Nothing to pay (e.g. fully covered by credit): close it without charging anyone.
+        invoices.findById(finalised.invoiceId())
+                .filter(i -> i.getTotal().signum() <= 0 && !"PAID".equals(i.getStatus()))
+                .ifPresentOrElse(i -> collect(i.getId()),
+                        () -> log.debug("Invoice {} finalised; payment pending until the customer pays", finalised.invoiceId()));
+    }
+
+    public boolean isAutoCollect() { return autoCollect; }
 
     @Transactional
     public Map<String, Object> collect(UUID invoiceId) {

@@ -61,8 +61,14 @@ $b1 = Call POST "/api/invoices/run/customer?customerId=$customer&period=$period"
 $b2 = Call POST "/api/invoices/run/customer?customerId=$customer&period=$period"
 if ($b1.status -eq "CREATED" -and $b2.status -eq "EXISTING") { Ok "idempotent (CREATED then EXISTING)" } else { Bad "$($b1.status) / $($b2.status) $($b1.reason)" }
 $invoice = Call GET "/api/invoices/$($b1.invoiceId)"
-if ($invoice.status -eq "FINALISED" -or $invoice.status -eq "PAID") { Ok "invoice $($invoice.status), total $($invoice.total)" } else { Bad "invoice status $($invoice.status)" }
+if ($invoice.status -eq "FINALISED") { Ok "invoice finalised, total $($invoice.total)" } else { Bad "invoice status $($invoice.status)" }
 if ([decimal]$invoice.total -eq [decimal]$est.estimatedAmount) { Ok "QA5: estimate equals invoice total" } else { Bad "estimate $($est.estimatedAmount) vs invoice $($invoice.total)" }
+Start-Sleep -Seconds 2
+$pending = Call GET "/api/invoices/$($invoice.id)"
+if ($pending.status -eq "FINALISED") { Ok "payment pending: nothing charged until the customer pays" } else { Bad "invoice status $($pending.status) before payment" }
+$pay = Call POST "/api/payments/mock/$($invoice.id)/pay"
+$paid = Call GET "/api/invoices/$($invoice.id)"
+if ($pay.paymentStatus -eq "SUCCEEDED" -and $paid.status -eq "PAID") { Ok "customer payment -> invoice PAID" } else { Bad "payment $($pay.paymentStatus), invoice $($paid.status)" }
 
 Step "Trace and render (QA5)"
 $lines = Call GET "/api/invoices/$($invoice.id)/lines"

@@ -142,7 +142,7 @@ Safe "estimate" {
   Check (@($cmp.simulations).Count -eq 2) "compare v1 vs v2"
 }
 
-Step "Billing (FR5) with a declining card -> dunning (FR8)"
+Step "Billing (FR5): invoice stays pending until paid; declined charge -> dunning (FR8)"
 Safe "billing" {
   $o = Api POST "/api/payments/mock/customers/$cust/outcome?succeed=false"
   Check ($o.chargesSucceed -eq $false) "mock provider set to decline"
@@ -152,7 +152,8 @@ Safe "billing" {
   $script:inv = Api GET "/api/invoices/$($b.invoiceId)"
   Start-Sleep -Seconds 4
   $script:inv = Api GET "/api/invoices/$($b.invoiceId)"
-  Check ($inv.status -eq "FINALISED") "invoice finalised, unpaid after declined charge"
+  Check ($inv.status -eq "FINALISED") "invoice finalised and pending: nothing charged without the customer"
+  Check (@(Api GET "/api/dunning" | Where-Object { $_.invoiceId -eq $inv.id }).Count -eq 0) "no payment attempt yet, no dunning case"
   $all = Api POST "/api/invoices/run?period=$period"
   Check ($all.status -eq "completed") "run all customers: created $($all.created), existing $($all.alreadyExisted)"
   $lines = Api GET "/api/invoices/$($inv.id)/lines"
@@ -167,6 +168,9 @@ Safe "billing" {
   Check ($txt.Length -gt 20 -and $csv.Length -gt 10) "render text and CSV"
   $pg = Api GET "/api/invoices/page?customerId=$cust&size=5"
   Check (@($pg.content).Count -ge 1) "paged invoices"
+  $col = Api POST "/api/payments/mock/$($inv.id)/collect"
+  Check ($col.paymentStatus -eq "FAILED") "admin charges card on file -> declined"
+  Start-Sleep -Seconds 2
   $cases = @(Api GET "/api/dunning" | Where-Object { $_.invoiceId -eq $inv.id })
   Check ($cases.Count -ge 1 -and $cases[0].status -eq "RETRYING") "dunning case RETRYING"
   $asOf = $today.AddDays(2).ToString("yyyy-MM-dd'T'HH:mm:ss'Z'")

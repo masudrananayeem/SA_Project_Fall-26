@@ -35,7 +35,7 @@ export function InvoicesPage({ selected, navigate }: { selected?: string; naviga
             tabs={[
               { value: 'all', label: 'All' },
               { value: 'DRAFT', label: 'Draft' },
-              { value: 'FINALISED', label: 'Open' },
+              { value: 'FINALISED', label: 'Payment pending' },
               { value: 'PAID', label: 'Paid' },
             ]}
           />

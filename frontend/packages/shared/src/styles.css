@@ -417,6 +417,13 @@ tr.selected td { background: var(--accent-soft); }
 .plan-card .btn { margin-top: auto; }
 .plan-price { font-size: clamp(28px, 2vw + 16px, 36px); font-weight: 750; letter-spacing: -0.02em; }
 .plan-price span { font-size: 14px; font-weight: 500; color: var(--muted); margin-left: 4px; }
+.pay-summary { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; padding: 14px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-2); }
+.pay-methods { display: flex; flex-direction: column; gap: 8px; }
+.pay-method { display: flex; gap: 12px; align-items: center; padding: 12px 14px; border: 1px solid var(--border); border-radius: var(--radius-sm); cursor: pointer; }
+.pay-method input { width: auto; }
+.pay-method > span:last-child { display: flex; flex-direction: column; }
+.pay-method.selected { border-color: var(--accent); background: var(--accent-soft); }
+.pay-icon { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 8px; background: var(--surface-2); color: var(--accent); flex: none; }
 .plan-features { list-style: none; padding: 0; margin: 4px 0; display: flex; flex-direction: column; gap: 8px; }
 .plan-features li { display: flex; gap: 8px; align-items: flex-start; font-size: 13.5px; color: var(--text-2); }
 .plan-features svg { color: var(--accent); flex: none; margin-top: 2px; }

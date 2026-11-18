@@ -197,14 +197,16 @@ export function Stat({ label, value, hint, icon, tone }: { label: string; value:
 
 const STATUS_TONE: Record<string, string> = {
   PAID: 'good', ACTIVE: 'good', SUCCEEDED: 'good', DELIVERED: 'good', REACTIVATED: 'good', CREATED: 'good', COMPLETED: 'good', INVOICED: 'good', CONVERTED: 'good',
-  FINALISED: 'info', OPEN: 'info', SCHEDULED: 'info', TRIALING: 'info', EXISTING: 'info', INCLUDED: 'info', SIMULATED: 'info',
+  FINALISED: 'warn', OPEN: 'info', SCHEDULED: 'info', TRIALING: 'info', EXISTING: 'info', INCLUDED: 'info', SIMULATED: 'info',
   DRAFT: 'neutral', PENDING: 'warn', RETRYING: 'warn', PAST_DUE: 'warn', PAUSED: 'warn', SKIPPED: 'neutral', IGNORED: 'neutral',
   FAILED: 'bad', SUSPENDED: 'bad', CANCELLED: 'bad', PAUSED_DUNNING: 'bad', EXPIRED: 'bad',
 };
 
+const STATUS_LABEL: Record<string, string> = { FINALISED: 'Payment pending', PAUSED_DUNNING: 'Paused (unpaid)' };
+
 export function StatusBadge({ status }: { status: string | null | undefined }) {
   const s = (status || 'UNKNOWN').toUpperCase();
-  return <span className={`badge badge-${STATUS_TONE[s] || 'neutral'}`}>{titleCase(s)}</span>;
+  return <span className={`badge badge-${STATUS_TONE[s] || 'neutral'}`}>{STATUS_LABEL[s] || titleCase(s)}</span>;
 }
 
 export function Badge({ children, tone = 'neutral' }: { children: ReactNode; tone?: 'good' | 'info' | 'warn' | 'bad' | 'neutral' | 'accent' }) {

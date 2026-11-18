@@ -67,6 +67,9 @@ meterflow:
   dunning:
     past-due-grace-days: 7
   payments:
+    # false (default): a finalised invoice stays unpaid until the customer pays it in the portal
+    # (or an admin collects it). true: charge the card on file right after finalisation.
+    auto-collect: ${METERFLOW_AUTO_COLLECT:false}
     mock:
       failing-customers: ${METERFLOW_MOCK_FAILING_CUSTOMERS:}
   webhooks:

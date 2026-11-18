@@ -1,9 +1,9 @@
-import { useState } from 'react';
-import { CreditCard, Download, FileText, GitBranch, Search, XCircle, Zap } from 'lucide-react';
+import { useState, type ReactNode } from 'react';
+import { Building2, CreditCard, Download, FileText, GitBranch, Lock, Search, Smartphone, XCircle, Zap } from 'lucide-react';
 import { apiText, get, post } from './api';
 import { date, dateTime, downloadText, invoiceNo, money, periodLabel, qty, shortId, toNumber } from './format';
 import type { Estimate, Invoice, InvoiceLine, LineTrace, PaymentResult } from './types';
-import { Alert, Badge, Button, Card, CardHeader, Code, Empty, ErrorNote, KeyValues, Spinner, StatusBadge, Table, useAction, useAsync } from './ui';
+import { Alert, Badge, Button, Card, CardHeader, Code, Empty, ErrorNote, KeyValues, Modal, Spinner, StatusBadge, Table, useAction, useAsync } from './ui';
 
 export function InvoiceTable({ invoices, onOpen, showCustomer = true, empty }: { invoices: Invoice[]; onOpen?: (i: Invoice) => void; showCustomer?: boolean; empty?: string }) {
   if (!invoices.length) return <Empty icon={<FileText size={22} />} title="No invoices yet">{empty || 'Invoices appear here after a billing run.'}</Empty>;
@@ -85,6 +85,7 @@ export function InvoiceView({ invoiceId, admin, onChanged }: InvoiceViewProps) {
   const lines = useAsync(() => get<InvoiceLine[]>(`/invoices/${invoiceId}/lines`), [invoiceId]);
   const [openTrace, setOpenTrace] = useState<string | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
+  const [paying, setPaying] = useState(false);
   const { busy, run } = useAction();
 
   if (invoice.loading && !invoice.data) return <Spinner label="Loading invoice…" />;
@@ -123,9 +124,14 @@ export function InvoiceView({ invoiceId, admin, onChanged }: InvoiceViewProps) {
       </div>
 
       <div className="btn-row">
-        {due && (
-          <Button variant="primary" icon={<CreditCard size={16} />} loading={busy === 'pay'} onClick={() => run('pay', () => post<PaymentResult>(`/payments/mock/${inv.id}/pay`), payResult).then(refresh)}>
+        {due && !admin && (
+          <Button variant="primary" icon={<CreditCard size={16} />} onClick={() => setPaying(true)}>
             Pay {money(inv.total, inv.currency)}
+          </Button>
+        )}
+        {due && admin && (
+          <Button icon={<CreditCard size={16} />} loading={busy === 'pay'} onClick={() => window.confirm('Record a payment received outside MeterFlow (e.g. bank transfer) for this invoice?') && run('pay', () => post<PaymentResult>(`/payments/mock/${inv.id}/pay`), payResult).then(refresh)}>
+            Mark as paid
           </Button>
         )}
         {admin && inv.status === 'DRAFT' && (
@@ -136,7 +142,7 @@ export function InvoiceView({ invoiceId, admin, onChanged }: InvoiceViewProps) {
         {admin && due && (
           <>
             <Button icon={<Zap size={16} />} loading={busy === 'collect'} onClick={() => run('collect', () => post<PaymentResult>(`/payments/mock/${inv.id}/collect`), payResult).then(refresh)}>
-              Collect via provider
+              Charge card on file
             </Button>
             <Button variant="danger" icon={<XCircle size={16} />} loading={busy === 'fail'} onClick={() => run('fail', () => post<PaymentResult>(`/payments/mock/${inv.id}/fail`), 'Payment failure recorded. Dunning started.').then(refresh)}>
               Simulate failed payment
@@ -154,6 +160,21 @@ export function InvoiceView({ invoiceId, admin, onChanged }: InvoiceViewProps) {
         </Button>
       </div>
 
+      {due && (
+        <Alert tone="warn">
+          {admin ? 'Payment pending: the customer has not paid yet. Nothing is charged automatically.' : 'Payment pending: this invoice is waiting for your payment.'}
+        </Alert>
+      )}
+      {paying && (
+        <PayInvoiceModal
+          invoice={inv}
+          onClose={() => setPaying(false)}
+          onPaid={() => {
+            setPaying(false);
+            void refresh();
+          }}
+        />
+      )}
       <KeyValues
         items={[
           ['Subtotal', money(inv.subtotal, inv.currency)],
@@ -256,5 +277,65 @@ export function EstimateBreakdown({ estimate }: { estimate: Estimate }) {
       </Table>
       {estimate.note && <Alert>{estimate.note}</Alert>}
     </div>
+  );
+}
+
+/**
+ * Customer checkout for one invoice. Nothing is paid until the customer confirms here.
+ * Test mode: the mock provider records the payment; no card or wallet details are collected.
+ */
+export function PayInvoiceModal({ invoice, onClose, onPaid }: { invoice: Invoice; onClose: () => void; onPaid: () => void }) {
+  const [method, setMethod] = useState<'card' | 'wallet' | 'bank'>('card');
+  const { busy, run } = useAction();
+  const methods: { key: 'card' | 'wallet' | 'bank'; label: string; hint: string; icon: ReactNode }[] = [
+    { key: 'card', label: 'Card on file', hint: 'Visa ending 4242 (test)', icon: <CreditCard size={18} /> },
+    { key: 'wallet', label: 'Mobile wallet', hint: 'bKash / Nagad (test)', icon: <Smartphone size={18} /> },
+    { key: 'bank', label: 'Bank transfer', hint: 'Marked paid on confirmation (test)', icon: <Building2 size={18} /> },
+  ];
+  const pay = async () => {
+    const r = await run('pay', () => post<PaymentResult>(`/payments/mock/${invoice.id}/pay`), (x) =>
+      x.paymentStatus === 'SUCCEEDED' ? `Payment of ${money(invoice.total, invoice.currency)} received. Thank you!` : x.paymentStatus === 'ALREADY_PAID' ? 'This invoice was already paid.' : `Payment ${x.paymentStatus.toLowerCase()}`,
+    );
+    if (r) onPaid();
+  };
+  return (
+    <Modal
+      open
+      title={`Pay ${invoiceNo(invoice.id)}`}
+      onClose={onClose}
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose}>
+            Not now
+          </Button>
+          <Button variant="primary" icon={<Lock size={15} />} loading={busy === 'pay'} onClick={pay}>
+            Pay {money(invoice.total, invoice.currency)}
+          </Button>
+        </>
+      }
+    >
+      <div className="stack-sm">
+        <div className="pay-summary">
+          <div>
+            <div className="muted small">{periodLabel(invoice.period)}</div>
+            <div className="invoice-total">{money(invoice.total, invoice.currency)}</div>
+          </div>
+          <StatusBadge status={invoice.status} />
+        </div>
+        <div className="pay-methods" role="radiogroup" aria-label="Payment method">
+          {methods.map((m) => (
+            <label key={m.key} className={`pay-method${method === m.key ? ' selected' : ''}`}>
+              <input type="radio" name="pay-method" checked={method === m.key} onChange={() => setMethod(m.key)} />
+              <span className="pay-icon">{m.icon}</span>
+              <span>
+                <b>{m.label}</b>
+                <span className="muted small">{m.hint}</span>
+              </span>
+            </label>
+          ))}
+        </div>
+        <Alert>Test mode: this demo records the payment with a mock provider. No real money moves and no card details are collected.</Alert>
+      </div>
+    </Modal>
   );
 }

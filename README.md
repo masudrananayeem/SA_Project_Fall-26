@@ -15,6 +15,11 @@ MeterFlow is a course-project implementation foundation for usage-based SaaS/API
 - React 19, TypeScript, Vite, npm workspaces monorepo (admin console + customer portal + shared package), Recharts
 - JUnit 5, Mockito, Spring Modulith tests, Testcontainers, k6
 
+## V22 at a glance
+
+- Invoices are **not** charged automatically anymore. They stay "Payment pending" until the customer pays in the portal (checkout dialog) or an admin charges the card on file or marks the invoice paid.
+- Details: `docs/V22-CHANGELOG.md`.
+
 ## V21 at a glance
 
 - Dark mode in the admin console and the customer portal. It follows the OS setting, has a toggle, and remembers your choice.
