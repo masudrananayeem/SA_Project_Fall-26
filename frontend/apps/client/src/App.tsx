@@ -9,6 +9,7 @@ import { AccountPage } from './pages/Account';
 import { NotificationsPage } from './pages/Notifications';
 import { PlansPage } from './pages/Plans';
 import { SignUpForm } from './SignUp';
+import { ApiPage } from './pages/Api';
 
 const ADMIN_URL = import.meta.env.VITE_ADMIN_URL || 'http://localhost:5173';
 const LOCAL_DEMO = !apiBase();
@@ -68,6 +69,8 @@ export default function App() {
         return <InvoicesPage customerId={customerId} selected={param} navigate={navigate} />;
       case 'budget':
         return <BudgetPage customerId={customerId} />;
+      case 'api':
+        return <ApiPage customerId={customerId} />;
       case 'plans':
         return <PlansPage customerId={customerId} navigate={navigate} />;
       case 'account':

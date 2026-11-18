@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
-import { AlertCircle, ArrowRight, CreditCard, Layers, PiggyBank, RefreshCw } from 'lucide-react';
+import { AccountStatusBanner, useAccountState } from '../status';
+import { ArrowRight, Layers, PiggyBank, RefreshCw } from 'lucide-react';
 import {
-  Button, Card, CardHeader, EstimateBreakdown, ErrorNote, InvoiceTable, PageHeader, PayInvoiceModal, Progress, Spinner,
-  currentPeriod, get, invoiceNo, money, periodLabel, qs, qty, toNumber, useAsync,
+  Button, Card, CardHeader, EstimateBreakdown, ErrorNote, InvoiceTable, PageHeader, Progress, Spinner,
+  currentPeriod, get, money, periodLabel, qs, qty, toNumber, useAsync,
   type BudgetEvaluation, type Estimate, type Invoice,
 } from '@meterflow/shared';
 
@@ -36,46 +37,27 @@ export function HomePage({ customerId, navigate }: { customerId: string; navigat
     const b = await get<BudgetEvaluation>(`/budgets${qs({ customerId, period })}`);
     return b.status === 'NO_BUDGET' ? b : get<BudgetEvaluation>(`/budgets/evaluate${qs({ customerId, period })}`);
   }, [customerId]);
-  const [paying, setPaying] = useState<Invoice | null>(null);
+  const account = useAccountState(customerId);
 
   const e = estimate.data;
-  const open = (invoices.data || []).filter((i) => i.status === 'FINALISED' && toNumber(i.total) > 0);
   const hasPlan = !!e?.lines;
+  const prepaid = account.plan?.billingMode === 'PREPAID';
 
   return (
     <>
-      {paying && (
-        <PayInvoiceModal
-          invoice={paying}
-          onClose={() => setPaying(null)}
-          onPaid={() => {
-            setPaying(null);
-            void invoices.reload();
-          }}
-        />
-      )}
       <PageHeader eyebrow={periodLabel(period)} title={`Welcome back, ${customerId}`} subtitle="Your usage and spend for the current billing period." />
       <div className="stack">
-        {open.map((i) => (
-          <div key={i.id} className="due-banner">
-            <AlertCircle size={20} />
-            <div>
-              <b>
-                {invoiceNo(i.id)} for {periodLabel(i.period)} is due — {money(i.total, i.currency)}
-              </b>
-              <div className="muted small">Payment pending. Nothing is charged until you pay.</div>
-            </div>
-            <Button variant="ghost" onClick={() => navigate(`invoices/${i.id}`)}>
-              View
-            </Button>
-            <Button variant="primary" icon={<CreditCard size={16} />} onClick={() => setPaying(i)}>
-              Pay now
-            </Button>
-          </div>
-        ))}
+        <AccountStatusBanner
+          state={{
+            ...account,
+            reload: async () => {
+              await Promise.all([account.reload(), invoices.reload(), estimate.reload()]);
+            },
+          }}
+        />
 
         <ErrorNote error={estimate.error} onRetry={estimate.reload} />
-        {e && !hasPlan && (
+        {!account.loading && !account.subscription && (
           <Card className="callout">
             <div className="callout-body">
               <span className="callout-icon">
@@ -95,7 +77,7 @@ export function HomePage({ customerId, navigate }: { customerId: string; navigat
           <Card className="hero-main">
             <div className="row-between">
               <span className="hero-label">
-                <span className="dot live" /> Estimated bill so far
+                <span className="dot live" /> {prepaid ? 'Prepaid package · usage this month' : 'Estimated bill so far'}
               </span>
               <span className="refresh-ring">
                 <RefreshCw size={12} className={estimate.loading ? 'spin' : undefined} /> updates in {left}s
@@ -106,7 +88,13 @@ export function HomePage({ customerId, navigate }: { customerId: string; navigat
             ) : (
               <>
                 <div className="hero-amount">{money(e.estimatedAmount, e.currency)}</div>
-                <div className="hero-sub">{hasPlan ? `${e.plan} · includes ${toNumber(e.taxRate)}% VAT` : e.note || 'No active subscription for this period'}</div>
+                <div className="hero-sub">
+                  {hasPlan
+                    ? `${e.plan} · ${prepaid ? 'paid in advance' : 'pay after use'} · includes ${toNumber(e.taxRate)}% VAT`
+                    : account.subscription
+                      ? 'Usage is paused until your account is paid up'
+                      : e.note || 'No active subscription for this period'}
+                </div>
                 {hasPlan && (
                   <div className="hero-meta">
                     <div>

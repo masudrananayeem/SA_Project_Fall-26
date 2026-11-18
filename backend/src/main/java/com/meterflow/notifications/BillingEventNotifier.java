@@ -63,6 +63,17 @@ public class BillingEventNotifier {
     }
 
     @ApplicationModuleListener
+    void on(PaymentEvents.AccountStandingChanged e) {
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("status", e.status());
+        data.put("unpaidInvoices", e.unpaidInvoices());
+        boolean blocked = "BLOCKED".equals(e.status());
+        notify(e.customerId(), blocked ? "account.blocked" : "account.unblocked",
+                blocked ? "Account blocked: " + e.unpaidInvoices() + " unpaid invoices. Usage is refused until you pay them."
+                        : "Account unblocked: thank you for your payment. Usage is accepted again.", data);
+    }
+
+    @ApplicationModuleListener
     void on(PaymentEvents.DunningStatusChanged e) {
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("invoiceId", e.invoiceId().toString());

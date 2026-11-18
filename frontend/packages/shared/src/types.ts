@@ -18,6 +18,9 @@ export interface Plan {
   aggregation: string | null;
   aggregationProperty: string | null;
   metricFiltersJson: string | null;
+  /** POSTPAID: pay after use (monthly invoice). PREPAID: pay the package before using it. */
+  billingMode?: 'POSTPAID' | 'PREPAID' | string;
+  prepaid?: boolean;
 }
 
 export interface Tier {
@@ -353,4 +356,55 @@ export interface SignUpInput {
   displayName: string;
   email: string;
   company?: string;
+}
+
+export interface PaymentRecord {
+  id: string;
+  invoiceId: string | null;
+  customerId: string;
+  amount: Num;
+  currency: string;
+  method: string;
+  kind: 'INVOICE' | 'TOP_UP' | string;
+  status: 'SUCCEEDED' | 'FAILED' | string;
+  reference: string | null;
+  message: string | null;
+  createdAt: string;
+}
+
+export interface PaymentSummary {
+  today: { count: number; amount: Num };
+  last7Days: { count: number; amount: Num };
+  last30Days: { count: number; amount: Num };
+  failedToday: number;
+  blockAfterUnpaidInvoices: number;
+  autoCollect: boolean;
+}
+
+export interface SubscriptionAnalyticsRow {
+  subscriptionId: string;
+  customerId: string;
+  planId: string;
+  planKey: string | null;
+  planName: string | null;
+  billingMode: string | null;
+  status: string;
+  onPlanSince: string;
+  daysOnPlan: number;
+  customerSince: string;
+  daysAsCustomer: number;
+}
+
+export interface UsageBreakdown {
+  customerId: string;
+  from: string;
+  to: string;
+  totalEvents: number;
+  lastEventAt: string | null;
+  metrics: { metric: string; events: number; quantity: Num }[];
+  properties: Record<string, { value: string; events: number; quantity: Num }[]>;
+  days: { day: string; events: number }[];
+  recent: { id: string; metric: string; quantity: Num; timestamp: string; idempotencyKey: string; properties: string | null }[];
+  usageAccepted: boolean;
+  usageBlockedReason: string | null;
 }

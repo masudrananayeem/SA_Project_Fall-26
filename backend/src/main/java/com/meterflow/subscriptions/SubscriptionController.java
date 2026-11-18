@@ -5,6 +5,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -16,6 +17,8 @@ import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
 import java.time.ZoneOffset;
+import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -28,13 +31,29 @@ public class SubscriptionController {
     private final PlanRepository plans;
     private final PlanChangeRepository changes;
     private final PlanChangeService planChanges;
+    private final ApplicationEventPublisher events;
 
     public SubscriptionController(SubscriptionRepository repo, PlanRepository plans, PlanChangeRepository changes,
-                                  PlanChangeService planChanges) {
+                                  PlanChangeService planChanges, ApplicationEventPublisher events) {
         this.repo = repo;
         this.plans = plans;
         this.changes = changes;
         this.planChanges = planChanges;
+        this.events = events;
+    }
+
+    /** True while the customer holds a subscription that is not cancelled or expired. */
+    private boolean hasLiveSubscription(String customerId) {
+        return repo.findByCustomerIdOrderByPeriodStartDesc(customerId).stream()
+                .anyMatch(s -> !SubscriptionState.CANCELLED.name().equals(s.getStatus()) && !SubscriptionState.EXPIRED.name().equals(s.getStatus()));
+    }
+
+    /** Saves a new subscription; a prepaid plan starts in PENDING_PAYMENT and gets its package invoice. */
+    private Subscription start(Subscription sub, com.meterflow.catalogue.Plan plan) {
+        if (plan.isPrepaid()) sub.awaitPayment();
+        var saved = repo.save(sub);
+        events.publishEvent(new SubscriptionStarted(saved.getId(), saved.getCustomerId(), plan.getId(), plan.isPrepaid()));
+        return saved;
     }
 
     public record Input(@NotBlank String customerId, @NotNull UUID planId, @NotNull LocalDate periodStart,
@@ -63,13 +82,13 @@ public class SubscriptionController {
     @Transactional
     public Subscription create(@Valid @RequestBody Input i) {
         if (!i.periodEnd().isAfter(i.periodStart())) throw new IllegalArgumentException("Period end must be after start");
-        plans.findById(i.planId()).orElseThrow(() -> new IllegalArgumentException("Plan not found"));
-        if (repo.findTopByCustomerIdAndStatusOrderByPeriodStartDesc(i.customerId(), SubscriptionState.ACTIVE.name()).isPresent())
+        var plan = plans.findById(i.planId()).orElseThrow(() -> new IllegalArgumentException("Plan not found"));
+        if (hasLiveSubscription(i.customerId()))
             throw new IllegalStateException("Customer already has an active subscription; change its plan instead");
         var sub = new Subscription(i.customerId(), i.planId(), i.periodStart(), i.periodEnd());
         if (i.seatCount() != null) sub.setSeatCount(i.seatCount());
         if (i.trialEnd() != null) sub.startTrial(i.trialEnd(), i.trialAutoConvert() == null || i.trialAutoConvert());
-        return repo.save(sub);
+        return start(sub, plan);
     }
 
     /**
@@ -82,13 +101,48 @@ public class SubscriptionController {
     public Subscription subscribeSelf(@Valid @RequestBody SelfInput in, Authentication auth) {
         var plan = plans.findById(in.planId()).orElseThrow(() -> new IllegalArgumentException("Plan not found"));
         if (!plan.isActive()) throw new IllegalArgumentException("This plan is not available");
-        boolean live = repo.findByCustomerIdOrderByPeriodStartDesc(auth.getName()).stream()
-                .anyMatch(s -> !SubscriptionState.CANCELLED.name().equals(s.getStatus()));
-        if (live) throw new IllegalStateException("You already have a subscription; change its plan instead");
+        if (hasLiveSubscription(auth.getName())) throw new IllegalStateException("You already have a subscription; change its plan instead");
         LocalDate today = LocalDate.now(ZoneOffset.UTC);
         var sub = new Subscription(auth.getName(), plan.getId(), today, today.plusYears(1));
         if (in.seatCount() != null) sub.setSeatCount(in.seatCount());
-        return repo.save(sub);
+        return start(sub, plan);
+    }
+
+    /**
+     * Admin analytics: every live subscription with its plan, how long the customer has been on that
+     * plan (since the last change to it, or since the subscription started) and as a customer at all.
+     */
+    @PreAuthorize("hasRole('ADMIN')")
+    @GetMapping("/analytics")
+    @Transactional(readOnly = true)
+    public List<Map<String, Object>> analytics() {
+        LocalDate today = LocalDate.now(ZoneOffset.UTC);
+        List<Subscription> all = repo.findAll();
+        Map<String, LocalDate> firstStart = new LinkedHashMap<>();
+        for (var s : all) firstStart.merge(s.getCustomerId(), s.getPeriodStart(), (a, b) -> a.isBefore(b) ? a : b);
+        List<Map<String, Object>> rows = new ArrayList<>();
+        for (var s : all) {
+            if (SubscriptionState.CANCELLED.name().equals(s.getStatus()) || SubscriptionState.EXPIRED.name().equals(s.getStatus())) continue;
+            LocalDate since = s.getPeriodStart();
+            for (var c : changes.findBySubscriptionIdOrderByEffectiveDateDesc(s.getId())) {
+                if (c.getToPlanId().equals(s.getPlanId())) { since = c.getEffectiveDate(); break; }
+            }
+            var plan = plans.findById(s.getPlanId()).orElse(null);
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("subscriptionId", s.getId());
+            row.put("customerId", s.getCustomerId());
+            row.put("planId", s.getPlanId());
+            row.put("planKey", plan == null ? null : plan.getPlanKey());
+            row.put("planName", plan == null ? null : plan.getName() + " v" + plan.getVersion());
+            row.put("billingMode", plan == null ? null : plan.getBillingMode());
+            row.put("status", s.getStatus());
+            row.put("onPlanSince", since);
+            row.put("daysOnPlan", Math.max(0, ChronoUnit.DAYS.between(since, today)));
+            row.put("customerSince", firstStart.get(s.getCustomerId()));
+            row.put("daysAsCustomer", Math.max(0, ChronoUnit.DAYS.between(firstStart.get(s.getCustomerId()), today)));
+            rows.add(row);
+        }
+        return rows;
     }
 
     @PreAuthorize("hasRole('ADMIN')")

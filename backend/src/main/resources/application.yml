@@ -70,6 +70,9 @@ meterflow:
     # false (default): a finalised invoice stays unpaid until the customer pays it in the portal
     # (or an admin collects it). true: charge the card on file right after finalisation.
     auto-collect: ${METERFLOW_AUTO_COLLECT:false}
+    # Postpaid accounts with this many unpaid invoices (about two months of free use) are blocked
+    # automatically: usage is refused until they pay. Checked after each invoice/payment and hourly.
+    block-after-unpaid-invoices: ${METERFLOW_BLOCK_AFTER_UNPAID:2}
     mock:
       failing-customers: ${METERFLOW_MOCK_FAILING_CUSTOMERS:}
   webhooks:

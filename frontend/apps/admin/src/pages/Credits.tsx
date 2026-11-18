@@ -71,7 +71,7 @@ export function CreditsPage() {
         </div>
         <div className="stack">
           <Card>
-            <CardHeader title="Top up prepaid credit" />
+            <CardHeader title="Record a prepaid payment" subtitle="Adds credit and appears in the payments feed" />
             <div className="inline-form">
               <Field label={`Amount (${currency})`}>
                 <input type="number" min="0.01" step="0.01" value={topUp} onChange={(e) => setTopUp(e.target.value)} />
@@ -81,7 +81,7 @@ export function CreditsPage() {
                 icon={<PlusCircle size={16} />}
                 loading={busy === 'top'}
                 disabled={!(Number(topUp) > 0)}
-                onClick={() => run('top', () => post<CreditAccount>('/credits/top-up', { customerId, currency, amount: Number(topUp) }), (a) => `Balance is now ${money(a.balance, a.currency)}.`).then(refresh)}
+                onClick={() => run('top', () => post<{ balance: number; currency: string }>('/payments/mock/top-up', { customerId, currency, amount: Number(topUp), method: 'admin' }), (a) => `Payment recorded. Balance is now ${money(a.balance, a.currency)}.`).then(refresh)}
               >
                 Top up
               </Button>

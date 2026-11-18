@@ -10,6 +10,13 @@ public class Plan {
  @org.hibernate.annotations.ColumnDefault("'sum'") @Column(nullable=false,length=40) private String aggregation="sum";
  @Column(name="aggregation_property",length=255) private String aggregationProperty;
  @Column(name="metric_filters_json",length=2000) private String metricFiltersJson;
+ /** POSTPAID: use first, pay the monthly invoice afterwards. PREPAID: pay the period's package before using the service. */
+ @org.hibernate.annotations.ColumnDefault("'POSTPAID'") @Column(name="billing_mode",nullable=false,length=20) private String billingMode=POSTPAID;
+ public static final String POSTPAID="POSTPAID"; public static final String PREPAID="PREPAID";
+ public String getBillingMode(){return billingMode==null?POSTPAID:billingMode;}
+ public boolean isPrepaid(){return PREPAID.equals(getBillingMode());}
+ /** Set at creation time only (plans are immutable). */
+ public void setBillingMode(String mode){String m=mode==null||mode.isBlank()?POSTPAID:mode.trim().toUpperCase(java.util.Locale.ROOT);if(!m.equals(POSTPAID)&&!m.equals(PREPAID))throw new IllegalArgumentException("billingMode must be POSTPAID or PREPAID");billingMode=m;}
  protected Plan(){} public Plan(String k,int v,String n,String c,BigDecimal flat,BigDecimal unit,String metric,BigDecimal allowance,BigDecimal min){this(k,v,n,c,flat,unit,metric,allowance,min,null);}
  public Plan(String k,int v,String n,String c,BigDecimal flat,BigDecimal unit,String metric,BigDecimal allowance,BigDecimal min,String chargeJson){planKey=k;version=v;name=n;currency=c;flatFee=flat;unitPrice=unit;this.metric=metric;freeAllowance=allowance;minimumCommitment=min;chargeDefinitionsJson=chargeJson;taxRate=BigDecimal.ZERO;}
  public UUID getId(){return id;} public String getPlanKey(){return planKey;} public int getVersion(){return version;} public String getName(){return name;} public String getCurrency(){return currency;} public BigDecimal getFlatFee(){return flatFee;} public BigDecimal getUnitPrice(){return unitPrice;} public String getMetric(){return metric;} public BigDecimal getFreeAllowance(){return freeAllowance;} public BigDecimal getMinimumCommitment(){return minimumCommitment;} public boolean isActive(){return active;} public String getChargeDefinitionsJson(){return chargeDefinitionsJson;} public BigDecimal getTaxRate(){return taxRate;}

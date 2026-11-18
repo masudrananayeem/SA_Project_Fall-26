@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { Activity, Bell, FileText, Home, Layers, LogOut, Menu, PiggyBank, UserCircle, X } from 'lucide-react';
+import { Activity, Bell, Code2, FileText, Home, Layers, LogOut, Menu, PiggyBank, UserCircle, X } from 'lucide-react';
 import { ThemeToggle, get, qs, timeAgo, useAsync, type CustomerNotification, type Session } from '@meterflow/shared';
 
 export const NAV = [
   { key: 'home', label: 'Overview', icon: Home },
   { key: 'usage', label: 'Usage', icon: Activity },
+  { key: 'api', label: 'API', icon: Code2 },
   { key: 'invoices', label: 'Invoices', icon: FileText },
   { key: 'budget', label: 'Budget', icon: PiggyBank },
   { key: 'plans', label: 'Plans', icon: Layers },

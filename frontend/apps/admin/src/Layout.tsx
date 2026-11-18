@@ -1,13 +1,14 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import {
-  Activity, AlertOctagon, Boxes, CalendarClock, ExternalLink, FileText, LayoutDashboard, LogOut, Menu, PlayCircle, Users, Wallet, Webhook,
+  Activity, AlertOctagon, Bell, Boxes, CalendarClock, CircleDollarSign, CreditCard, ExternalLink, FileText, LayoutDashboard, LogOut, Menu, PlayCircle, Users, Wallet, Webhook, XCircle,
 } from 'lucide-react';
-import { ThemeToggle, type Session } from '@meterflow/shared';
+import { ThemeToggle, get, money, timeAgo, useToast, type PaymentRecord, type Session } from '@meterflow/shared';
 
 export const NAV = [
   { key: 'overview', label: 'Overview', icon: LayoutDashboard, group: 'Monitor' },
   { key: 'customers', label: 'Customers', icon: Users, group: 'Monitor' },
   { key: 'invoices', label: 'Invoices', icon: FileText, group: 'Monitor' },
+  { key: 'payments', label: 'Payments', icon: CircleDollarSign, group: 'Monitor' },
   { key: 'plans', label: 'Pricing plans', icon: Boxes, group: 'Configure' },
   { key: 'subscriptions', label: 'Subscriptions', icon: CalendarClock, group: 'Configure' },
   { key: 'usage', label: 'Usage metering', icon: Activity, group: 'Operate' },
@@ -85,10 +86,123 @@ export function Layout({
           <span className="env-pill">
             <span className="dot live" /> API connected
           </span>
+          <PaymentBell navigate={navigate} />
           <ThemeToggle />
         </header>
         <main className="admin-content">{children}</main>
       </div>
+    </div>
+  );
+}
+
+const SEEN_KEY = 'meterflow.admin.paymentsSeen';
+
+/** Live payment notifications: polls the ledger, toasts new payments, counts unseen ones. */
+function PaymentBell({ navigate }: { navigate: (to: string) => void }) {
+  const toast = useToast();
+  const [items, setItems] = useState<PaymentRecord[]>([]);
+  const [open, setOpen] = useState(false);
+  const [seen, setSeen] = useState(() => {
+    try {
+      return localStorage.getItem(SEEN_KEY) || new Date().toISOString();
+    } catch {
+      return new Date().toISOString();
+    }
+  });
+  const known = useRef<Set<string> | null>(null);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    let alive = true;
+    const poll = async () => {
+      try {
+        const list = await get<PaymentRecord[]>('/payments');
+        if (!alive) return;
+        if (known.current) {
+          list
+            .filter((p) => !known.current!.has(p.id))
+            .slice(0, 3)
+            .forEach((p) =>
+              p.status === 'SUCCEEDED'
+                ? toast.success(`${p.customerId} paid ${money(p.amount, p.currency)}${p.kind === 'TOP_UP' ? ' (prepaid credit)' : ''}`)
+                : toast.error(`Payment failed: ${p.customerId} ${money(p.amount, p.currency)}`),
+            );
+        }
+        known.current = new Set(list.map((p) => p.id));
+        setItems(list.slice(0, 20));
+      } catch {
+        /* the page shows API errors; the bell stays quiet */
+      }
+    };
+    void poll();
+    const t = setInterval(poll, 15000);
+    return () => {
+      alive = false;
+      clearInterval(t);
+    };
+  }, [toast]);
+
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: MouseEvent) => ref.current && !ref.current.contains(e.target as Node) && setOpen(false);
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [open]);
+
+  const unseen = items.filter((p) => p.createdAt > seen).length;
+  const markSeen = () => {
+    const now = new Date().toISOString();
+    setSeen(now);
+    try {
+      localStorage.setItem(SEEN_KEY, now);
+    } catch {
+      /* ignore */
+    }
+  };
+
+  return (
+    <div className="bell-wrap" ref={ref}>
+      <button className="icon-btn" aria-label="Payment notifications" title="Payment notifications" onClick={() => setOpen((o) => !o)}>
+        <Bell size={18} />
+        {unseen > 0 && <span className="bell-count">{unseen > 9 ? '9+' : unseen}</span>}
+      </button>
+      {open && (
+        <div className="bell-menu">
+          <div className="bell-head">
+            <b>Payments</b>
+            {unseen > 0 && (
+              <button className="link-btn" onClick={markSeen}>
+                Mark all read
+              </button>
+            )}
+          </div>
+          <div className="bell-list">
+            {items.slice(0, 8).map((p) => (
+              <div key={p.id} className={`bell-item${p.createdAt > seen ? ' unread' : ''}`}>
+                <span className="list-icon">{p.status === 'SUCCEEDED' ? <CreditCard size={14} /> : <XCircle size={14} />}</span>
+                <div style={{ flex: 1 }}>
+                  <div>
+                    <b>{p.customerId}</b> {p.status === 'SUCCEEDED' ? 'paid' : 'payment failed'} {money(p.amount, p.currency)}
+                    {p.kind === 'TOP_UP' && ' (credit)'}
+                  </div>
+                  <div className="muted small">{timeAgo(p.createdAt)}</div>
+                </div>
+              </div>
+            ))}
+            {!items.length && <div className="muted small bell-empty">No payments yet.</div>}
+          </div>
+          <button
+            className="bell-all"
+            onClick={() => {
+              setOpen(false);
+              markSeen();
+              navigate('payments');
+            }}
+          >
+            Open payments
+          </button>
+        </div>
+      )}
     </div>
   );
 }

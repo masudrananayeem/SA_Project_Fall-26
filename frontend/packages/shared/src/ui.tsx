@@ -199,10 +199,11 @@ const STATUS_TONE: Record<string, string> = {
   PAID: 'good', ACTIVE: 'good', SUCCEEDED: 'good', DELIVERED: 'good', REACTIVATED: 'good', CREATED: 'good', COMPLETED: 'good', INVOICED: 'good', CONVERTED: 'good',
   FINALISED: 'warn', OPEN: 'info', SCHEDULED: 'info', TRIALING: 'info', EXISTING: 'info', INCLUDED: 'info', SIMULATED: 'info',
   DRAFT: 'neutral', PENDING: 'warn', RETRYING: 'warn', PAST_DUE: 'warn', PAUSED: 'warn', SKIPPED: 'neutral', IGNORED: 'neutral',
+  PENDING_PAYMENT: 'warn', BLOCKED: 'bad',
   FAILED: 'bad', SUSPENDED: 'bad', CANCELLED: 'bad', PAUSED_DUNNING: 'bad', EXPIRED: 'bad',
 };
 
-const STATUS_LABEL: Record<string, string> = { FINALISED: 'Payment pending', PAUSED_DUNNING: 'Paused (unpaid)' };
+const STATUS_LABEL: Record<string, string> = { FINALISED: 'Payment pending', PAUSED_DUNNING: 'Suspended (unpaid)', PENDING_PAYMENT: 'Awaiting payment', BLOCKED: 'Blocked (unpaid)', TOP_UP: 'Credit top-up' };
 
 export function StatusBadge({ status }: { status: string | null | undefined }) {
   const s = (status || 'UNKNOWN').toUpperCase();

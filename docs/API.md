@@ -161,3 +161,19 @@ without `WWW-Authenticate` (no browser popup). Other clients keep the standard B
 | POST | `/api/subscriptions/self` | CUSTOMER | `{planId, seatCount?}`: subscribe yourself (starts today, one live subscription) |
 | POST | `/api/subscriptions/{id}/change-plan` | ADMIN or owner | Now also for the customer that owns the subscription |
 | POST | `/api/subscriptions/{id}/cancel` | ADMIN or owner | Now also for the customer that owns the subscription |
+
+## V23 endpoints (prepaid, payments, standing, usage breakdown)
+| Method | Route | Role | Purpose |
+|---|---|---|---|
+| POST/PUT | `/api/catalogue/plans` | ADMIN | Plan input accepts `billingMode`: `POSTPAID` (default) or `PREPAID` |
+| GET | `/api/subscriptions/analytics` | ADMIN | Per subscription: plan, billing mode, status, `onPlanSince`, `daysOnPlan`, `daysAsCustomer` |
+| POST | `/api/payments/mock/{invoiceId}/pay?method=card\|wallet\|bank` | ADMIN or owner | Pay an invoice; the method is recorded in the ledger |
+| POST | `/api/payments/mock/top-up` | ADMIN or CUSTOMER | `{customerId?, amount, currency, method}`: buy prepaid credit |
+| GET | `/api/payments?customerId=` | ADMIN, or CUSTOMER (own only) | Payment ledger (latest 200), successes and failures |
+| GET | `/api/payments/summary` | ADMIN | Totals today / 7 days / 30 days, failures today, block limit |
+| POST | `/api/payments/standing/enforce` | ADMIN | Block postpaid customers with 2+ unpaid invoices, unblock those who paid |
+| POST | `/api/invoices/prepaid/renew` | ADMIN | Issue this month's prepaid package invoices now (normally daily at 00:10 UTC) |
+| GET | `/api/usage/breakdown?customerId&from&to` | ADMIN or owner | Events per metric, per day, per property value, latest events, and whether usage is accepted |
+
+New subscription statuses: `PENDING_PAYMENT` (prepaid, not paid yet) and `BLOCKED` (postpaid, too many unpaid invoices).
+In both, `POST /api/usage/events:batch` rejects the events with the reason in `rejectionDetails`.

@@ -103,3 +103,16 @@ export function uid(prefix = 'evt') {
   const r = typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   return `${prefix}-${r}`;
 }
+
+export function billingModeLabel(mode: string | null | undefined) {
+  return mode === 'PREPAID' ? 'Pay before use' : 'Pay after use';
+}
+
+export function daysLabel(days: number | null | undefined) {
+  if (days === null || days === undefined) return '—';
+  if (days < 1) return 'today';
+  if (days < 31) return `${days} day${days === 1 ? '' : 's'}`;
+  const months = Math.floor(days / 30);
+  const rest = days % 30;
+  return `${months} mo${rest ? ` ${rest} d` : ''}`;
+}

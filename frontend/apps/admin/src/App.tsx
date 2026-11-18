@@ -11,6 +11,7 @@ import { InvoicesPage } from './pages/Invoices';
 import { CreditsPage } from './pages/Credits';
 import { DunningPage } from './pages/Dunning';
 import { WebhooksPage } from './pages/Webhooks';
+import { PaymentsPage } from './pages/Payments';
 
 const CLIENT_URL = import.meta.env.VITE_CLIENT_URL || 'http://localhost:5174';
 // The demo credentials are only offered when the app talks to a local backend (no VITE_API_URL).
@@ -69,6 +70,8 @@ export default function App() {
         return <DunningPage navigate={navigate} />;
       case 'webhooks':
         return <WebhooksPage />;
+      case 'payments':
+        return <PaymentsPage navigate={navigate} />;
       default:
         return <OverviewPage navigate={navigate} />;
     }

@@ -3,6 +3,10 @@ package com.meterflow.metering;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.meterflow.metering.aggregation.MetricAggregation;
+import com.meterflow.subscriptions.Subscription;
+import com.meterflow.subscriptions.SubscriptionRepository;
+import com.meterflow.subscriptions.SubscriptionState;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -35,14 +39,41 @@ public class UsageService {
     private final UsageEventStore store;
     private final LateUsageAdjustmentRepository lateAdjustments;
     private final ApplicationEventPublisher events;
+    /** Null in unit tests that do not care about account standing. */
+    private final SubscriptionRepository subscriptions;
 
     public UsageService(UsageEventRepository repo, ObjectMapper mapper, UsageEventStore store,
                         LateUsageAdjustmentRepository lateAdjustments, ApplicationEventPublisher events) {
+        this(repo, mapper, store, lateAdjustments, events, null);
+    }
+
+    @Autowired
+    public UsageService(UsageEventRepository repo, ObjectMapper mapper, UsageEventStore store,
+                        LateUsageAdjustmentRepository lateAdjustments, ApplicationEventPublisher events,
+                        SubscriptionRepository subscriptions) {
         this.repo = repo;
         this.mapper = mapper;
         this.store = store;
         this.lateAdjustments = lateAdjustments;
         this.events = events;
+        this.subscriptions = subscriptions;
+    }
+
+    /**
+     * Why a customer may not send usage right now, or empty. Customers without a subscription are
+     * accepted (usage can be recorded before a plan is assigned).
+     */
+    public Optional<String> usageBlockedReason(String customerId) {
+        if (subscriptions == null) return Optional.empty();
+        Subscription latest = subscriptions.findByCustomerIdOrderByPeriodStartDesc(customerId).stream()
+                .filter(s -> !SubscriptionState.CANCELLED.name().equals(s.getStatus()) && !SubscriptionState.EXPIRED.name().equals(s.getStatus()))
+                .findFirst().orElse(null);
+        if (latest == null || latest.state().acceptsUsage()) return Optional.empty();
+        return Optional.of(switch (latest.state()) {
+            case PENDING_PAYMENT -> "Prepaid plan not paid yet: pay the pending invoice to start using the service";
+            case BLOCKED -> "Account blocked for unpaid invoices: pay them to resume the service";
+            default -> "Service suspended for non-payment: pay the overdue invoice to resume";
+        });
     }
 
     /** Close of the UTC calendar month that contains the instant. */
@@ -57,7 +88,13 @@ public class UsageService {
     public Map<String, Object> ingest(List<UsageController.EventInput> inputs, Instant now) {
         List<Map<String, String>> rejected = new ArrayList<>();
         List<UsageEventStore.NewEvent> candidates = new ArrayList<>();
+        Map<String, Optional<String>> standing = new HashMap<>();
         for (var event : inputs) {
+            Optional<String> blocked = standing.computeIfAbsent(event.customerId(), this::usageBlockedReason);
+            if (blocked.isPresent()) {
+                rejected.add(Map.of("idempotencyKey", event.idempotencyKey(), "reason", blocked.get()));
+                continue;
+            }
             Instant close = periodClose(event.timestamp());
             if (now.isAfter(close.plus(MAX_LATENESS))) {
                 rejected.add(Map.of("idempotencyKey", event.idempotencyKey(),
@@ -134,6 +171,83 @@ public class UsageService {
                 .allMatch(f -> Objects.equals(String.valueOf(sample.properties().get(f.getKey())), f.getValue()))).count();
         return Map.of("customerId", customer, "metric", metric, "aggregation", operation, "value", value,
                 "matchedEventCount", matched, "from", from, "to", to, "filters", effectiveFilters);
+    }
+
+    /** Usage breakdown for the "API usage" pages (customer portal and admin customer view). */
+    @Transactional(readOnly = true)
+    public Map<String, Object> breakdown(String customer, Instant from, Instant to) {
+        if (from == null || to == null || !from.isBefore(to)) throw new IllegalArgumentException("from must be before to");
+        if (Duration.between(from, to).compareTo(Duration.ofDays(93)) > 0)
+            throw new IllegalArgumentException("Breakdown window cannot exceed 93 days");
+        List<UsageEvent> window = repo.findWindow(customer, from, to);
+        Map<String, BigDecimal> quantityByMetric = new TreeMap<>();
+        Map<String, Long> countByMetric = new TreeMap<>();
+        Map<String, Map<String, long[]>> countsByProperty = new TreeMap<>();
+        Map<String, Map<String, BigDecimal>> quantityByProperty = new TreeMap<>();
+        Map<String, Long> perDay = new TreeMap<>();
+        Instant last = null;
+        for (UsageEvent e : window) {
+            quantityByMetric.merge(e.getMetric(), e.getQuantity(), BigDecimal::add);
+            countByMetric.merge(e.getMetric(), 1L, Long::sum);
+            perDay.merge(e.getTimestamp().atZone(ZoneOffset.UTC).toLocalDate().toString(), 1L, Long::sum);
+            if (last == null || e.getTimestamp().isAfter(last)) last = e.getTimestamp();
+            Map<String, Object> props;
+            try {
+                props = e.getPropertiesJson() == null ? Map.of() : mapper.readValue(e.getPropertiesJson(), PROPERTIES);
+            } catch (Exception ex) {
+                props = Map.of();
+            }
+            for (var p : props.entrySet()) {
+                if (p.getValue() == null || p.getValue() instanceof Map || p.getValue() instanceof Collection) continue;
+                String value = String.valueOf(p.getValue());
+                if (value.length() > 120) value = value.substring(0, 120);
+                countsByProperty.computeIfAbsent(p.getKey(), k -> new HashMap<>()).computeIfAbsent(value, v -> new long[1])[0]++;
+                quantityByProperty.computeIfAbsent(p.getKey(), k -> new HashMap<>()).merge(value, e.getQuantity(), BigDecimal::add);
+            }
+        }
+        List<Map<String, Object>> metrics = new ArrayList<>();
+        for (var m : quantityByMetric.entrySet())
+            metrics.add(Map.of("metric", m.getKey(), "events", countByMetric.get(m.getKey()), "quantity", m.getValue()));
+        Map<String, Object> properties = new LinkedHashMap<>();
+        for (var prop : countsByProperty.entrySet()) {
+            // Skip high-cardinality properties (ids): they say little about "what" is used.
+            if (prop.getValue().size() > 50) continue;
+            List<Map<String, Object>> values = prop.getValue().entrySet().stream()
+                    .sorted((a, b) -> Long.compare(b.getValue()[0], a.getValue()[0]))
+                    .limit(12)
+                    .map(v -> Map.<String, Object>of("value", v.getKey(), "events", v.getValue()[0],
+                            "quantity", quantityByProperty.get(prop.getKey()).get(v.getKey())))
+                    .toList();
+            properties.put(prop.getKey(), values);
+        }
+        List<Map<String, Object>> days = perDay.entrySet().stream()
+                .map(d -> Map.<String, Object>of("day", d.getKey(), "events", d.getValue())).toList();
+        List<Map<String, Object>> recent = window.stream()
+                .sorted((a, b) -> b.getTimestamp().compareTo(a.getTimestamp()))
+                .limit(15)
+                .map(e -> {
+                    Map<String, Object> r = new LinkedHashMap<>();
+                    r.put("id", e.getId());
+                    r.put("metric", e.getMetric());
+                    r.put("quantity", e.getQuantity());
+                    r.put("timestamp", e.getTimestamp());
+                    r.put("idempotencyKey", e.getIdempotencyKey());
+                    r.put("properties", e.getPropertiesJson());
+                    return r;
+                }).toList();
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("customerId", customer);
+        result.put("from", from);
+        result.put("to", to);
+        result.put("totalEvents", window.size());
+        result.put("lastEventAt", last);
+        result.put("metrics", metrics);
+        result.put("properties", properties);
+        result.put("days", days);
+        result.put("recent", recent);
+        result.put("usageAccepted", usageBlockedReason(customer).isEmpty());
+        result.put("usageBlockedReason", usageBlockedReason(customer).orElse(null));
+        return result;
     }
 
     public Map<String, Object> summary(String customer) {

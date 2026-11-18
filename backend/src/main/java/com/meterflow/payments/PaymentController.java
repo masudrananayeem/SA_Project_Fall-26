@@ -1,11 +1,15 @@
 package com.meterflow.payments;
 
 import com.meterflow.invoicing.InvoiceRepository;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.NotNull;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
+import java.math.BigDecimal;
 import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.UUID;
@@ -23,12 +27,26 @@ public class PaymentController {
         this.provider = provider;
     }
 
-    /** Customer pays an open invoice (mock checkout). */
+    /** Customer pays an open invoice (mock checkout: method card, wallet or bank); admin "mark as paid". */
     @PreAuthorize("hasAnyRole('ADMIN','CUSTOMER')")
     @PostMapping("/{invoiceId}/pay")
-    public Map<String, Object> pay(@PathVariable UUID invoiceId, Authentication auth) {
+    public Map<String, Object> pay(@PathVariable UUID invoiceId, @RequestParam(required = false) String method, Authentication auth) {
         guard(invoiceId, auth);
-        return payments.recordSuccess(invoiceId);
+        boolean admin = isAdmin(auth);
+        return payments.recordSuccess(invoiceId, method == null ? (admin ? "admin" : "card") : method);
+    }
+
+    public record TopUpInput(String customerId, @NotNull @DecimalMin("1") BigDecimal amount, String currency, String method) { }
+
+    /** Buy prepaid credit (customer: own account; admin: any customer). Applied to the next invoices. */
+    @PreAuthorize("hasAnyRole('ADMIN','CUSTOMER')")
+    @PostMapping("/top-up")
+    public Map<String, Object> topUp(@Valid @RequestBody TopUpInput in, Authentication auth) {
+        String customer = isAdmin(auth) ? in.customerId() : auth.getName();
+        if (customer == null || customer.isBlank()) throw new IllegalArgumentException("customerId is required");
+        if (!isAdmin(auth) && in.customerId() != null && !in.customerId().equals(auth.getName()))
+            throw new AccessDeniedException("Customers may only top up their own account");
+        return payments.topUp(customer, in.amount(), in.currency(), in.method());
     }
 
     /** Simulates a declined payment for an invoice (starts dunning). */
@@ -51,6 +69,10 @@ public class PaymentController {
     public Map<String, Object> outcome(@PathVariable String customerId, @RequestParam boolean succeed) {
         provider.setOutcome(customerId, succeed);
         return Map.of("customerId", customerId, "chargesSucceed", succeed);
+    }
+
+    private static boolean isAdmin(Authentication auth) {
+        return auth.getAuthorities().stream().anyMatch(x -> x.getAuthority().equals("ROLE_ADMIN"));
     }
 
     private void guard(UUID invoiceId, Authentication auth) {

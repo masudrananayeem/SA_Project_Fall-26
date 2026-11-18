@@ -1,9 +1,9 @@
 import { useMemo, useState } from 'react';
-import { ArrowRightLeft, Boxes, GitBranch, Plus, Trash2 } from 'lucide-react';
+import { ArrowRightLeft, Boxes, Clock, GitBranch, Plus, Trash2, Users, Wallet } from 'lucide-react';
 import {
   Alert, Badge, Button, Card, CardHeader, Empty, ErrorNote, Field, KeyValues, Modal, PageHeader, Spinner, Table,
-  get, money, parseJsonObject, post, put, qs, toNumber, useAction, useAsync,
-  type ChargeDefinition, type MigrationResult, type Plan, type Tier,
+  billingModeLabel, daysLabel, get, money, parseJsonObject, post, put, qs, toNumber, useAction, useAsync,
+  type ChargeDefinition, type MigrationResult, type Plan, type SubscriptionAnalyticsRow, type Tier,
 } from '@meterflow/shared';
 import { usePlans } from '../common';
 
@@ -26,6 +26,12 @@ function filters(p: Plan): string {
 export function PlansPage() {
   const plans = usePlans();
   const types = useAsync(() => get<{ types: string[] }>('/catalogue/plans/charge-types'), []);
+  const analytics = useAsync(() => get<SubscriptionAnalyticsRow[]>('/subscriptions/analytics'), []);
+  const statsFor = (key: string) => {
+    const rows = (analytics.data || []).filter((r) => r.planKey === key);
+    const avg = rows.length ? Math.round(rows.reduce((a, r) => a + r.daysOnPlan, 0) / rows.length) : null;
+    return { count: rows.length, avg, longest: rows.reduce((m, r) => Math.max(m, r.daysOnPlan), 0), unpaid: rows.filter((r) => r.status === 'PENDING_PAYMENT' || r.status === 'BLOCKED').length };
+  };
   const [editing, setEditing] = useState<{ base?: Plan } | null>(null);
   const [migrating, setMigrating] = useState<string | null>(null);
 
@@ -70,12 +76,14 @@ export function PlansPage() {
           {groups.map((g) => {
             const latest = g.versions[0];
             const cs = charges(latest);
+            const st = statsFor(g.key);
             return (
               <Card key={g.key}>
                 <CardHeader
                   title={
                     <span className="row">
-                      {latest.name} <Badge tone="accent">v{latest.version}</Badge> <span className="mono muted small">{g.key}</span>
+                      {latest.name} <Badge tone="accent">v{latest.version}</Badge>{' '}
+                      <Badge tone={latest.billingMode === 'PREPAID' ? 'warn' : 'info'}>{billingModeLabel(latest.billingMode)}</Badge> <span className="mono muted small">{g.key}</span>
                     </span>
                   }
                   subtitle={`${g.versions.length} version${g.versions.length > 1 ? 's' : ''} · ${latest.currency} · metric ${latest.metric} (${latest.aggregation || 'sum'})`}
@@ -92,6 +100,19 @@ export function PlansPage() {
                     </>
                   }
                 />
+                <div className="plan-stats">
+                  <span>
+                    <Users size={14} /> <b>{st.count}</b> customer{st.count === 1 ? '' : 's'}
+                  </span>
+                  <span>
+                    <Clock size={14} /> average <b>{daysLabel(st.avg)}</b> on plan · longest <b>{daysLabel(st.longest)}</b>
+                  </span>
+                  {st.unpaid > 0 && (
+                    <span className="text-warn">
+                      <Wallet size={14} /> {st.unpaid} awaiting payment / blocked
+                    </span>
+                  )}
+                </div>
                 {cs.length ? (
                   <div className="stack-sm">
                     <span className="muted small">Charge components (Composite)</span>
@@ -202,6 +223,7 @@ interface FormState {
   metricFilters: string;
   useCharges: boolean;
   charges: ChargeDefinition[];
+  billingMode: string;
 }
 
 function PlanForm({ base, types, onClose, onSaved }: { base?: Plan; types: string[]; onClose: () => void; onSaved: () => void }) {
@@ -220,6 +242,7 @@ function PlanForm({ base, types, onClose, onSaved }: { base?: Plan; types: strin
     metricFilters: base ? filters(base) : '',
     useCharges: base ? charges(base).length > 0 : false,
     charges: base ? charges(base) : [],
+    billingMode: base?.billingMode || 'POSTPAID',
   }));
   const [error, setError] = useState<string | null>(null);
   const { busy, run } = useAction();
@@ -246,6 +269,7 @@ function PlanForm({ base, types, onClose, onSaved }: { base?: Plan; types: strin
       aggregation: f.aggregation,
       aggregationProperty: f.aggregationProperty.trim() || null,
       metricFilters: Object.keys(mf).length ? mf : null,
+      billingMode: f.billingMode,
       charges: f.useCharges
         ? f.charges.map((c) => ({
             type: c.type,
@@ -315,6 +339,12 @@ function PlanForm({ base, types, onClose, onSaved }: { base?: Plan; types: strin
           </Field>
           <Field label="Tax rate (%)">
             <input type="number" min="0" step="0.01" value={f.taxRate} onChange={(e) => set('taxRate', e.target.value)} />
+          </Field>
+          <Field label="Billing" hint={f.billingMode === 'PREPAID' ? 'Customer pays the package up front; usage is refused until paid' : 'Monthly invoice after use; 2 unpaid invoices block the account'} wide>
+            <select value={f.billingMode} onChange={(e) => set('billingMode', e.target.value)}>
+              <option value="POSTPAID">Postpaid: pay after use (monthly invoice)</option>
+              <option value="PREPAID">Prepaid: pay before use (package paid up front)</option>
+            </select>
           </Field>
         </div>
 

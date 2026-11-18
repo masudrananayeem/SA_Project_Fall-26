@@ -73,6 +73,20 @@ public class UsageController {
         return liveSpend.cachedEstimate(customerId, period == null || period.isBlank() ? LiveSpendService.currentPeriod() : period);
     }
 
+    /**
+     * What the customer is using: per metric, per property value (endpoint, region, ...), per day,
+     * the latest events, and whether usage is currently accepted. Defaults to the current month.
+     */
+    @GetMapping("/breakdown")
+    public Map<String, Object> breakdown(@RequestParam String customerId, @RequestParam(required = false) Instant from,
+                                         @RequestParam(required = false) Instant to, Authentication auth) {
+        authorizeCustomer(customerId, auth);
+        Instant end = to == null ? Instant.now().plusSeconds(60) : to;
+        Instant start = from == null ? java.time.LocalDate.now(java.time.ZoneOffset.UTC).withDayOfMonth(1)
+                .atStartOfDay(java.time.ZoneOffset.UTC).toInstant() : from;
+        return service.breakdown(customerId, start, end);
+    }
+
     private static boolean isAdmin(Authentication auth) {
         return auth.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN"));
     }

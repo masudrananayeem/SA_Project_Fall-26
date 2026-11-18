@@ -38,6 +38,7 @@ public class BillingTestWorld {
     public final UsageService usage;
     public final InvoiceBillingRun billing;
     public final SimulationBillingRun simulation;
+    public final PrepaidBillingRun prepaid;
 
     public BillingTestWorld(boolean allowOpenPeriod) {
         var eventRepo = mock(UsageEventRepository.class);
@@ -127,6 +128,8 @@ public class BillingTestWorld {
                 calculator, credits, published::add, true, allowOpenPeriod);
         simulation = new SimulationBillingRun(subRepo, planRepo, eventRepo, pricing, changeRepo, ledgerRepo, invoiceRepo, lineRepo,
                 calculator, credits);
+        prepaid = new PrepaidBillingRun(subRepo, planRepo, eventRepo, pricing, changeRepo, ledgerRepo, invoiceRepo, lineRepo,
+                calculator, credits, published::add);
     }
 
     public static void setId(Object entity, UUID id) {

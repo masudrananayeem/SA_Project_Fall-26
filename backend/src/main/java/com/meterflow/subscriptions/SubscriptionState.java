@@ -12,6 +12,8 @@ public enum SubscriptionState {
         @Override SubscriptionState reactivateAfterPayment() { return ACTIVE; }
         @Override SubscriptionState cancel() { return CANCELLED; }
         @Override SubscriptionState expire() { return EXPIRED; }
+        @Override SubscriptionState awaitPayment() { return PENDING_PAYMENT; }
+        @Override SubscriptionState block() { return BLOCKED; }
         @Override public boolean billable() { return true; }
         @Override public boolean canChangePlan() { return true; }
     },
@@ -24,6 +26,22 @@ public enum SubscriptionState {
         @Override SubscriptionState cancel() { return CANCELLED; }
         @Override SubscriptionState expire() { return EXPIRED; }
     },
+    /** Prepaid plan: the period's package is invoiced but not paid yet. Usage is refused until it is paid. */
+    PENDING_PAYMENT {
+        @Override SubscriptionState pause() { return PAUSED; }
+        @Override SubscriptionState awaitPayment() { return PENDING_PAYMENT; }
+        @Override SubscriptionState reactivateAfterPayment() { return ACTIVE; }
+        @Override SubscriptionState cancel() { return CANCELLED; }
+        @Override SubscriptionState expire() { return EXPIRED; }
+    },
+    /** Postpaid plan blocked automatically after too many unpaid invoices. Usage is refused until they are paid. */
+    BLOCKED {
+        @Override SubscriptionState pause() { return PAUSED; }
+        @Override SubscriptionState block() { return BLOCKED; }
+        @Override SubscriptionState unblock() { return ACTIVE; }
+        @Override SubscriptionState cancel() { return CANCELLED; }
+        @Override SubscriptionState expire() { return EXPIRED; }
+    },
     /** Suspended because an invoice stayed unpaid after the retry schedule. */
     PAUSED_DUNNING {
         @Override SubscriptionState pause() { return PAUSED; }
@@ -32,6 +50,7 @@ public enum SubscriptionState {
         }
         @Override SubscriptionState suspendForDunning() { return PAUSED_DUNNING; }
         @Override SubscriptionState reactivateAfterPayment() { return ACTIVE; }
+        @Override SubscriptionState block() { return BLOCKED; }
         @Override SubscriptionState cancel() { return CANCELLED; }
         @Override SubscriptionState expire() { return EXPIRED; }
     },
@@ -46,6 +65,12 @@ public enum SubscriptionState {
     SubscriptionState reactivateAfterPayment() { return this; }
     SubscriptionState cancel() { if (this == CANCELLED) return this; throw illegal("cancel"); }
     SubscriptionState expire() { throw illegal("expire"); }
+    SubscriptionState awaitPayment() { throw illegal("wait for payment on"); }
+    /** Blocking and unblocking are automatic signals: states they do not apply to ignore them. */
+    SubscriptionState block() { return this; }
+    SubscriptionState unblock() { return this; }
+    /** True when the customer may send usage (refused while waiting for payment or blocked). */
+    public boolean acceptsUsage() { return this != PENDING_PAYMENT && this != BLOCKED && this != PAUSED_DUNNING; }
     public boolean billable() { return false; }
     public boolean canChangePlan() { return false; }
 

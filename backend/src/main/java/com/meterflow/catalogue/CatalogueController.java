@@ -38,7 +38,8 @@ public class CatalogueController {
                             @NotNull @DecimalMin("0") BigDecimal flatFee, @NotNull @DecimalMin("0") BigDecimal unitPrice,
                             @NotBlank String metric, @NotNull @DecimalMin("0") BigDecimal freeAllowance,
                             @NotNull @DecimalMin("0") BigDecimal minimumCommitment, List<@Valid ChargeDefinition> charges,
-                            BigDecimal taxRate, String aggregation, String aggregationProperty, Map<String, String> metricFilters) { }
+                            BigDecimal taxRate, String aggregation, String aggregationProperty, Map<String, String> metricFilters,
+                            String billingMode) { }
 
     @GetMapping
     public List<Plan> all() { return repo.findAllByOrderByPlanKeyAscVersionDesc(); }
@@ -83,6 +84,7 @@ public class CatalogueController {
         var plan = new Plan(planKey, version, in.name(), currency, in.flatFee(), in.unitPrice(), in.metric(),
                 in.freeAllowance(), in.minimumCommitment(), chargeJson);
         if (in.taxRate() != null) plan.setTaxRate(in.taxRate());
+        plan.setBillingMode(in.billingMode());
         try {
             plan.defineMetric(in.aggregation(), in.aggregationProperty(),
                     in.metricFilters() == null || in.metricFilters().isEmpty() ? null : mapper.writeValueAsString(in.metricFilters()));

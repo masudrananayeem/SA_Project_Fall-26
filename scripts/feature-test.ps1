@@ -266,6 +266,67 @@ Safe "accounts" {
   Check ($cancel.status -eq "CANCELLED") "customer cancels own subscription"
 }
 
+Step "Prepaid plan: pay before use"
+$preUser = "ft-pre-$run"
+$prePass = "Pre-pass-$run"
+$preHeaders = @{ Authorization = (Basic $preUser $prePass); "X-Requested-With" = "XMLHttpRequest" }
+Safe "prepaid" {
+  $pp = Api POST "/api/catalogue/plans" @{ planKey = "ft-pre-$run"; name = "FT Prepaid"; currency = "BDT"; flatFee = 1000; unitPrice = 0; metric = "api_calls";
+    freeAllowance = 50000; minimumCommitment = 0; taxRate = 15; billingMode = "PREPAID" }
+  Check ($pp.billingMode -eq "PREPAID") "prepaid plan published"
+  Invoke-RestMethod -Method POST -Uri "$BaseUrl/api/auth/signup" -ContentType "application/json" -TimeoutSec 300 `
+    -Body (@{ username = $preUser; password = $prePass; displayName = "Prepaid Tester"; email = "pre@example.com" } | ConvertTo-Json) | Out-Null
+  $ps = Api POST "/api/subscriptions/self" @{ planId = $pp.id } $preHeaders
+  Check ($ps.status -eq "PENDING_PAYMENT") "subscription waits for payment (PENDING_PAYMENT)"
+  Start-Sleep -Seconds 4
+  $pinv = @(Api GET "/api/invoices?customerId=$preUser" $null $preHeaders | Where-Object { $_.period -eq $period })
+  Check ($pinv.Count -eq 1 -and $pinv[0].status -eq "FINALISED" -and [decimal]$pinv[0].total -eq 1150) "package invoice issued up front: 1000 + 15% = 1150.00"
+  $ev = @(@{ customerId = $preUser; metric = "api_calls"; quantity = 1; timestamp = $today.ToString("o"); idempotencyKey = "ft-pre-$run-1" })
+  $r = Api POST "/api/usage/events:batch" @{ events = $ev } $preHeaders
+  Check ($r.accepted -eq 0 -and $r.rejected -eq 1) "usage refused before payment ($($r.rejectionDetails[0].reason))"
+  $pay = Api POST "/api/payments/mock/$($pinv[0].id)/pay?method=wallet" $null $preHeaders
+  Check ($pay.paymentStatus -eq "SUCCEEDED" -and $pay.method -eq "wallet") "customer pays with mobile wallet"
+  $after = @(Api GET "/api/subscriptions" $null $preHeaders)[0]
+  Check ($after.status -eq "ACTIVE") "subscription ACTIVE after payment"
+  $r2 = Api POST "/api/usage/events:batch" @{ events = @(@{ customerId = $preUser; metric = "api_calls"; quantity = 1; timestamp = $today.ToString("o"); idempotencyKey = "ft-pre-$run-2" }) } $preHeaders
+  Check ($r2.accepted -eq 1) "usage accepted after payment"
+  $again = Api POST "/api/invoices/run/customer?customerId=$preUser&period=$period"
+  Check ($again.status -eq "EXISTING") "month-end run does not bill the prepaid month again"
+  $mine = @(Api GET "/api/payments" $null $preHeaders)
+  Check ($mine.Count -ge 1 -and $mine[0].method -eq "wallet") "customer sees own payment history"
+  $feed = @(Api GET "/api/payments")
+  Check (@($feed | Where-Object { $_.customerId -eq $preUser -and $_.status -eq "SUCCEEDED" }).Count -ge 1) "admin payment feed shows the payment"
+  $sum = Api GET "/api/payments/summary"
+  Check ($sum.today.count -ge 1) "admin summary: $($sum.today.count) payment(s) today, $($sum.today.amount)"
+  $top = Api POST "/api/payments/mock/top-up" @{ amount = 300; currency = "BDT"; method = "card" } $preHeaders
+  Check ([decimal]$top.balance -ge 300) "customer buys prepaid credit (balance $($top.balance))"
+  $ren = Api POST "/api/invoices/prepaid/renew"
+  Check ($null -ne $ren.renewed) "prepaid renewal job runs ($($ren.renewed) renewed)"
+}
+
+Step "Postpaid: two unpaid invoices block the account"
+$late = "ft-late-$run"
+Safe "auto-block" {
+  $ls = Api POST "/api/subscriptions" @{ customerId = $late; planId = $a1.id; periodStart = $today.AddDays(-45).ToString("yyyy-MM-dd"); periodEnd = $today.AddDays(320).ToString("yyyy-MM-dd") }
+  Api POST "/api/usage/events:batch" @{ events = @(@{ customerId = $late; metric = "api_calls"; quantity = 5; timestamp = $today.ToString("o"); idempotencyKey = "ft-late-$run-1" }) } | Out-Null
+  $i1 = Api POST "/api/invoices/run/customer?customerId=$late&period=$prevPeriod"
+  $i2 = Api POST "/api/invoices/run/customer?customerId=$late&period=$period"
+  Check ($i1.status -eq "CREATED" -and $i2.status -eq "CREATED") "two monthly invoices, both unpaid"
+  Start-Sleep -Seconds 4
+  Api POST "/api/payments/standing/enforce" | Out-Null
+  $st = @(Api GET "/api/subscriptions" | Where-Object { $_.customerId -eq $late })[0]
+  Check ($st.status -eq "BLOCKED") "account BLOCKED after 2 unpaid invoices"
+  $rb = Api POST "/api/usage/events:batch" @{ events = @(@{ customerId = $late; metric = "api_calls"; quantity = 1; timestamp = $today.ToString("o"); idempotencyKey = "ft-late-$run-2" }) }
+  Check ($rb.rejected -eq 1) "usage refused while blocked"
+  Api POST "/api/payments/mock/$($i1.invoiceId)/pay?method=bank" | Out-Null
+  $st2 = @(Api GET "/api/subscriptions" | Where-Object { $_.customerId -eq $late })[0]
+  Check ($st2.status -eq "ACTIVE") "paying the oldest invoice unblocks the account"
+  $an = @(Api GET "/api/subscriptions/analytics" | Where-Object { $_.customerId -eq $late })
+  Check ($an.Count -eq 1 -and $an[0].daysOnPlan -ge 44) "analytics: on plan for $($an[0].daysOnPlan) days"
+  $bd = Api GET "/api/usage/breakdown?customerId=$cust"
+  Check ($bd.totalEvents -ge 40 -and $bd.properties.endpoint.Count -eq 4) "usage breakdown: $($bd.totalEvents) events, 4 endpoints"
+}
+
 Step "Admin: customers and logins"
 Safe "admin accounts" {
   $list = Api GET "/api/customers"

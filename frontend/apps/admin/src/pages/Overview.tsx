@@ -1,31 +1,35 @@
 import { useMemo } from 'react';
-import { AlertOctagon, CalendarClock, CircleDollarSign, FileText, Rocket, Wallet } from 'lucide-react';
+import { AlertOctagon, Ban, CalendarClock, CircleDollarSign, CreditCard, FileText, Rocket, Wallet, XCircle } from 'lucide-react';
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import {
-  Badge, Button, Card, CardHeader, Empty, ErrorNote, InvoiceTable, PageHeader, Spinner, Stat, StatusBadge, Table,
-  chartPalette, currentPeriod, dateTime, get, isoDay, money, periodLabel, post, toNumber, uid, useAction, useAsync, useTheme,
-  type DunningCase, type IngestResult, type Invoice, type Plan, type Subscription, type UsageEventInput,
+  Button, Card, CardHeader, Empty, ErrorNote, InvoiceTable, PageHeader, Spinner, Stat, StatusBadge,
+  METHOD_LABEL, billingModeLabel, chartPalette, currentPeriod, dateTime, daysLabel, get, isoDay, money, periodLabel, post, timeAgo, toNumber, uid, useAction, useAsync, useTheme,
+  type DunningCase, type IngestResult, type Invoice, type PaymentRecord, type Plan, type Subscription, type SubscriptionAnalyticsRow, type UsageEventInput,
 } from '@meterflow/shared';
-import { latestPlans, planLabel, type Navigate } from '../common';
+import { latestPlans, type Navigate } from '../common';
 
 interface Data {
   invoices: Invoice[];
   subs: Subscription[];
   dunning: DunningCase[];
   plans: Plan[];
+  payments: PaymentRecord[];
+  analytics: SubscriptionAnalyticsRow[];
 }
 
 const OPEN_DUNNING = ['RETRYING', 'PAST_DUE', 'SUSPENDED'];
 
 export function OverviewPage({ navigate }: { navigate: Navigate }) {
   const data = useAsync<Data>(async () => {
-    const [invoices, subs, dunning, plans] = await Promise.all([
+    const [invoices, subs, dunning, plans, payments, analytics] = await Promise.all([
       get<Invoice[]>('/invoices'),
       get<Subscription[]>('/subscriptions'),
       get<DunningCase[]>('/dunning'),
       get<Plan[]>('/catalogue/plans'),
+      get<PaymentRecord[]>('/payments'),
+      get<SubscriptionAnalyticsRow[]>('/subscriptions/analytics'),
     ]);
-    return { invoices, subs, dunning, plans };
+    return { invoices, subs, dunning, plans, payments, analytics };
   }, []);
   const { busy, run } = useAction();
   const { theme } = useTheme();
@@ -56,6 +60,18 @@ export function OverviewPage({ navigate }: { navigate: Navigate }) {
       trialing: d.subs.filter((s) => s.trialing).length,
       openDunning: d.dunning.filter((c) => OPEN_DUNNING.includes(c.status)),
       planKeys: latestPlans(d.plans).length,
+      unpaidAccounts: d.analytics.filter((r) => ['PENDING_PAYMENT', 'BLOCKED', 'PAUSED_DUNNING'].includes(r.status)).length,
+      distribution: (() => {
+        const map = new Map<string, { name: string; mode: string | null; count: number; days: number }>();
+        d.analytics.forEach((r) => {
+          const key = r.planKey || r.planId;
+          const row = map.get(key) || { name: r.planName || key, mode: r.billingMode, count: 0, days: 0 };
+          row.count++;
+          row.days += r.daysOnPlan;
+          map.set(key, row);
+        });
+        return [...map.values()].sort((a, b) => b.count - a.count);
+      })(),
       chart,
       thisPeriod: d.invoices.filter((i) => i.period === period),
     };
@@ -131,6 +147,7 @@ export function OverviewPage({ navigate }: { navigate: Navigate }) {
             <Stat label="Outstanding" value={money(m.outstanding)} hint={`${m.outstandingCount} awaiting payment`} icon={<FileText size={17} />} tone={m.outstanding > 0 ? 'warn' : undefined} />
             <Stat label="Active subscriptions" value={m.active} hint={`${m.trialing} in trial · ${m.planKeys} plans`} icon={<CalendarClock size={17} />} />
             <Stat label="Open dunning cases" value={m.openDunning.length} hint="Retrying, past due or suspended" icon={<AlertOctagon size={17} />} tone={m.openDunning.length ? 'bad' : undefined} />
+            <Stat label="Unpaid / blocked accounts" value={m.unpaidAccounts} hint="Awaiting prepaid payment or blocked" icon={<Ban size={17} />} tone={m.unpaidAccounts ? 'warn' : undefined} />
           </div>
 
           {!demoCustomerActive && (
@@ -204,39 +221,53 @@ export function OverviewPage({ navigate }: { navigate: Navigate }) {
             </div>
           </Card>
 
-          <Card className="flush">
-            <CardHeader title="Subscriptions" subtitle="Most recent first" actions={<Button size="sm" variant="ghost" onClick={() => navigate('subscriptions')}>Manage</Button>} />
-            <div className="flush-body">
-              {data.data!.subs.length ? (
-                <Table>
-                  <thead>
-                    <tr>
-                      <th>Customer</th>
-                      <th>Plan</th>
-                      <th>Status</th>
-                      <th>Period</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {data.data!.subs.slice().sort((a, b) => b.periodStart.localeCompare(a.periodStart)).slice(0, 6).map((s) => (
-                      <tr key={s.id} className="clickable" onClick={() => navigate(`customers/${encodeURIComponent(s.customerId)}`)}>
-                        <td className="strong">{s.customerId}</td>
-                        <td>{planLabel(data.data!.plans, s.planId)}</td>
-                        <td>
-                          <StatusBadge status={s.status} /> {s.trialing && <Badge tone="info">Trial</Badge>}
-                        </td>
-                        <td className="muted">
-                          {s.periodStart} → {s.periodEnd}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </Table>
+          <div className="grid-2">
+            <Card>
+              <CardHeader title="Customers per plan" subtitle="Live subscriptions and how long customers stay on each plan" actions={<Button size="sm" variant="ghost" onClick={() => navigate('subscriptions')}>Subscriptions</Button>} />
+              {m.distribution.length ? (
+                <div>
+                  {m.distribution.map((p) => {
+                    const total = m.distribution.reduce((a, x) => a + x.count, 0);
+                    return (
+                      <div key={p.name} className="dist-row">
+                        <div>
+                          <div className="strong">{p.name}</div>
+                          <div className="muted small">{billingModeLabel(p.mode)} · avg {daysLabel(Math.round(p.days / p.count))} on plan</div>
+                        </div>
+                        <span className="prop-bar">
+                          <span style={{ width: `${(p.count * 100) / total}%` }} />
+                        </span>
+                        <b>
+                          {p.count} customer{p.count === 1 ? '' : 's'}
+                        </b>
+                      </div>
+                    );
+                  })}
+                </div>
               ) : (
                 <Empty title="No subscriptions yet">Create one on the Subscriptions page or use “Prepare demo”.</Empty>
               )}
-            </div>
-          </Card>
+            </Card>
+            <Card>
+              <CardHeader title="Latest payments" subtitle="Updates when customers pay" actions={<Button size="sm" variant="ghost" onClick={() => navigate('payments')}>All payments</Button>} />
+              {data.data!.payments.length ? (
+                <div className="list">
+                  {data.data!.payments.slice(0, 6).map((p) => (
+                    <div key={p.id} className="list-item">
+                      <span className="list-icon">{p.status === 'SUCCEEDED' ? <CreditCard size={15} /> : <XCircle size={15} />}</span>
+                      <div style={{ flex: 1 }}>
+                        <b>{p.customerId}</b> <span className="muted">· {METHOD_LABEL[p.method] || p.method}{p.kind === 'TOP_UP' ? ' · credit' : ''}</span>
+                        <div className="muted small">{timeAgo(p.createdAt)}</div>
+                      </div>
+                      <span className={p.status === 'SUCCEEDED' ? 'amount-in' : 'amount-fail'}>{money(p.amount, p.currency)}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <Empty icon={<CreditCard size={22} />} title="No payments yet">Customer payments appear here as soon as they pay.</Empty>
+              )}
+            </Card>
+          </div>
         </div>
       )}
     </>

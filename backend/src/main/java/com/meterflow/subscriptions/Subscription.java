@@ -111,6 +111,11 @@ public class Subscription {
     public void pause() { status = state().pause().name(); }
     public void resume() { status = state().resume().name(); }
     public void pauseForDunning() { status = state().suspendForDunning().name(); }
+    /** Prepaid: the package for the period is invoiced; usage waits for the payment. */
+    public void awaitPayment() { status = state().awaitPayment().name(); }
+    /** Postpaid: blocked for unpaid invoices (no-op in states it does not apply to). */
+    public void block() { status = state().block().name(); }
+    public void unblock() { status = state().unblock().name(); }
     public void resumeFromDunning() { status = state().reactivateAfterPayment().name(); }
     public void cancel() {
         status = state().cancel().name();

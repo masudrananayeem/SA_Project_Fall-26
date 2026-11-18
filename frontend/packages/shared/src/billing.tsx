@@ -280,20 +280,44 @@ export function EstimateBreakdown({ estimate }: { estimate: Estimate }) {
   );
 }
 
+type Method = 'card' | 'wallet' | 'bank';
+
+const METHODS: { key: Method; label: string; hint: string; icon: ReactNode }[] = [
+  { key: 'card', label: 'Card', hint: 'Visa / Mastercard ending 4242 (test)', icon: <CreditCard size={18} /> },
+  { key: 'wallet', label: 'Mobile wallet', hint: 'bKash / Nagad / Rocket (test)', icon: <Smartphone size={18} /> },
+  { key: 'bank', label: 'Bank transfer', hint: 'Recorded when you confirm (test)', icon: <Building2 size={18} /> },
+];
+
+export const METHOD_LABEL: Record<string, string> = {
+  card: 'Card', wallet: 'Mobile wallet', bank: 'Bank transfer', admin: 'Recorded by admin', manual: 'Manual', card_on_file: 'Card on file',
+};
+
+function MethodPicker({ value, onChange }: { value: Method; onChange: (m: Method) => void }) {
+  return (
+    <div className="pay-methods" role="radiogroup" aria-label="Payment method">
+      {METHODS.map((m) => (
+        <label key={m.key} className={`pay-method${value === m.key ? ' selected' : ''}`}>
+          <input type="radio" name="pay-method" checked={value === m.key} onChange={() => onChange(m.key)} />
+          <span className="pay-icon">{m.icon}</span>
+          <span>
+            <b>{m.label}</b>
+            <span className="muted small">{m.hint}</span>
+          </span>
+        </label>
+      ))}
+    </div>
+  );
+}
+
 /**
  * Customer checkout for one invoice. Nothing is paid until the customer confirms here.
  * Test mode: the mock provider records the payment; no card or wallet details are collected.
  */
-export function PayInvoiceModal({ invoice, onClose, onPaid }: { invoice: Invoice; onClose: () => void; onPaid: () => void }) {
-  const [method, setMethod] = useState<'card' | 'wallet' | 'bank'>('card');
+export function PayInvoiceModal({ invoice, onClose, onPaid, laterLabel = 'Not now', intro }: { invoice: Invoice; onClose: () => void; onPaid: () => void; laterLabel?: string; intro?: ReactNode }) {
+  const [method, setMethod] = useState<Method>('card');
   const { busy, run } = useAction();
-  const methods: { key: 'card' | 'wallet' | 'bank'; label: string; hint: string; icon: ReactNode }[] = [
-    { key: 'card', label: 'Card on file', hint: 'Visa ending 4242 (test)', icon: <CreditCard size={18} /> },
-    { key: 'wallet', label: 'Mobile wallet', hint: 'bKash / Nagad (test)', icon: <Smartphone size={18} /> },
-    { key: 'bank', label: 'Bank transfer', hint: 'Marked paid on confirmation (test)', icon: <Building2 size={18} /> },
-  ];
   const pay = async () => {
-    const r = await run('pay', () => post<PaymentResult>(`/payments/mock/${invoice.id}/pay`), (x) =>
+    const r = await run('pay', () => post<PaymentResult>(`/payments/mock/${invoice.id}/pay?method=${method}`), (x) =>
       x.paymentStatus === 'SUCCEEDED' ? `Payment of ${money(invoice.total, invoice.currency)} received. Thank you!` : x.paymentStatus === 'ALREADY_PAID' ? 'This invoice was already paid.' : `Payment ${x.paymentStatus.toLowerCase()}`,
     );
     if (r) onPaid();
@@ -306,7 +330,7 @@ export function PayInvoiceModal({ invoice, onClose, onPaid }: { invoice: Invoice
       footer={
         <>
           <Button variant="ghost" onClick={onClose}>
-            Not now
+            {laterLabel}
           </Button>
           <Button variant="primary" icon={<Lock size={15} />} loading={busy === 'pay'} onClick={pay}>
             Pay {money(invoice.total, invoice.currency)}
@@ -315,6 +339,7 @@ export function PayInvoiceModal({ invoice, onClose, onPaid }: { invoice: Invoice
       }
     >
       <div className="stack-sm">
+        {intro}
         <div className="pay-summary">
           <div>
             <div className="muted small">{periodLabel(invoice.period)}</div>
@@ -322,19 +347,54 @@ export function PayInvoiceModal({ invoice, onClose, onPaid }: { invoice: Invoice
           </div>
           <StatusBadge status={invoice.status} />
         </div>
-        <div className="pay-methods" role="radiogroup" aria-label="Payment method">
-          {methods.map((m) => (
-            <label key={m.key} className={`pay-method${method === m.key ? ' selected' : ''}`}>
-              <input type="radio" name="pay-method" checked={method === m.key} onChange={() => setMethod(m.key)} />
-              <span className="pay-icon">{m.icon}</span>
-              <span>
-                <b>{m.label}</b>
-                <span className="muted small">{m.hint}</span>
-              </span>
-            </label>
+        <MethodPicker value={method} onChange={setMethod} />
+        <Alert>Test mode: this demo records the payment with a mock provider. No real money moves and no card details are collected.</Alert>
+      </div>
+    </Modal>
+  );
+}
+
+/** Buy prepaid credit (customer) — it is applied automatically to the next invoices. */
+export function TopUpModal({ currency = 'BDT', suggested = 500, onClose, onDone, title = 'Add prepaid credit', intro }: { currency?: string; suggested?: number; onClose: () => void; onDone: () => void; title?: string; intro?: ReactNode }) {
+  const [amount, setAmount] = useState(String(suggested));
+  const [method, setMethod] = useState<Method>('card');
+  const { busy, run } = useAction();
+  const value = Number(amount);
+  const pay = async () => {
+    const r = await run('top', () => post<{ balance: number; currency: string }>('/payments/mock/top-up', { amount: value, currency, method }), (x) => `Credit added. Your balance is ${money(x.balance, x.currency)}.`);
+    if (r) onDone();
+  };
+  return (
+    <Modal
+      open
+      title={title}
+      onClose={onClose}
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button variant="primary" icon={<Lock size={15} />} disabled={!(value >= 1)} loading={busy === 'top'} onClick={pay}>
+            Pay {money(value || 0, currency)}
+          </Button>
+        </>
+      }
+    >
+      <div className="stack-sm">
+        {intro}
+        <label className="field">
+          <span className="field-label">Amount ({currency})</span>
+          <input type="number" min="1" step="1" value={amount} onChange={(e) => setAmount(e.target.value)} />
+        </label>
+        <div className="btn-row">
+          {[200, 500, 1000, 2000].map((v) => (
+            <Button key={v} size="sm" variant="subtle" onClick={() => setAmount(String(v))}>
+              {money(v, currency)}
+            </Button>
           ))}
         </div>
-        <Alert>Test mode: this demo records the payment with a mock provider. No real money moves and no card details are collected.</Alert>
+        <MethodPicker value={method} onChange={setMethod} />
+        <Alert>Credit is used automatically for your next invoices. Test mode: no real money moves.</Alert>
       </div>
     </Modal>
   );

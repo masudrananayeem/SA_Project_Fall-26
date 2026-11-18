@@ -144,7 +144,7 @@ function TestEventsCard({ customerId, metric, onSent }: { customerId: string; me
               idempotencyKey: uid('portal'),
               properties: { region: 'ap-south-1', endpoint: ['/v1/chat', '/v1/embeddings', '/v1/images'][i % 3] },
             }));
-            const r = await run('send', () => post<IngestResult>('/usage/events:batch', { events }), (x) => `${x.accepted} events recorded.`);
+            const r = await run('send', () => post<IngestResult>('/usage/events:batch', { events }), (x) => (x.accepted ? `${x.accepted} events recorded.` : 'No events were accepted.'));
             if (r) {
               setResult(r);
               onSent();
@@ -154,6 +154,11 @@ function TestEventsCard({ customerId, metric, onSent }: { customerId: string; me
           Send
         </Button>
       </div>
+      {result && result.rejectionDetails.length > 0 && (
+        <div style={{ marginTop: 14 }}>
+          <Alert tone="bad">{result.rejectionDetails[0].reason}</Alert>
+        </div>
+      )}
       {result && (
         <div style={{ marginTop: 14 }}>
           <Table className="compact">

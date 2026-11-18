@@ -15,6 +15,14 @@ MeterFlow is a course-project implementation foundation for usage-based SaaS/API
 - React 19, TypeScript, Vite, npm workspaces monorepo (admin console + customer portal + shared package), Recharts
 - JUnit 5, Mockito, Spring Modulith tests, Testcontainers, k6
 
+## V23 at a glance
+
+- Plans are **postpaid** (use first, pay later) or **prepaid** (pay first). Prepaid subscriptions wait for payment before usage is accepted.
+- Postpaid customers with 2 unpaid invoices are blocked automatically and unblocked when they pay.
+- Admin "Payments" page with a live feed and a payment bell; customers-per-plan and days-on-plan analytics.
+- Client "API" page: how to call the API and a breakdown of exactly what was used.
+- Details: `docs/V23-CHANGELOG.md`.
+
 ## V22 at a glance
 
 - Invoices are **not** charged automatically anymore. They stay "Payment pending" until the customer pays in the portal (checkout dialog) or an admin charges the card on file or marks the invoice paid.

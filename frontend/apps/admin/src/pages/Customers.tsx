@@ -1,9 +1,9 @@
 import { useMemo, useState } from 'react';
-import { Bell, CalendarCheck, Clock, FileText, Receipt, Search, UserPlus, Users } from 'lucide-react';
+import { Bell, CalendarCheck, Clock, CreditCard, FileText, Receipt, Search, UserPlus, Users } from 'lucide-react';
 import {
-  Alert, Badge, Button, Card, Drawer, EstimateBreakdown, Empty, ErrorNote, Field, InvoiceTable, KeyValues, Modal, PageHeader, Progress, Spinner, Stat, StatusBadge, Table, Tabs,
+  Alert, Badge, Button, Card, Drawer, EstimateBreakdown, Empty, ErrorNote, Field, InvoiceTable, KeyValues, METHOD_LABEL, Modal, PageHeader, Progress, Spinner, Stat, StatusBadge, Table, Tabs, UsageBreakdownView,
   currentPeriod, date, dateTime, get, isoDay, money, periodLabel, post, qs, qty, timeAgo, toNumber, useAction, useAsync,
-  type Account, type BillingOutcome, type BudgetEvaluation, type CreditAccount, type CustomerNotification, type Estimate, type Invoice, type LateAdjustment, type Plan, type Subscription, type UsageSummary,
+  type Account, type BillingOutcome, type PaymentRecord, type UsageBreakdown, type BudgetEvaluation, type CreditAccount, type CustomerNotification, type Estimate, type Invoice, type LateAdjustment, type Plan, type Subscription, type UsageSummary,
 } from '@meterflow/shared';
 import { PlanSelect, latestPlans, planLabel, usePlans, type Navigate } from '../common';
 
@@ -331,7 +331,7 @@ function CustomerDetail({ customerId, account, subs, plans, navigate, onChanged 
 }
 
 function CustomerTabs({ customerId, subs, navigate }: { customerId: string; subs: Subscription[]; navigate: Navigate }) {
-  const [tab, setTab] = useState<'spend' | 'invoices' | 'account' | 'activity'>('spend');
+  const [tab, setTab] = useState<'spend' | 'api' | 'invoices' | 'payments' | 'account' | 'activity'>('spend');
   const period = currentPeriod();
   const plans = usePlans();
   const estimate = useAsync(() => get<Estimate>(`/usage/estimate${qs({ customerId, period })}`), [customerId]);
@@ -375,6 +375,8 @@ function CustomerTabs({ customerId, subs, navigate }: { customerId: string; subs
           { value: 'spend', label: 'Live spend' },
           { value: 'invoices', label: 'Invoices' },
           { value: 'account', label: 'Account' },
+          { value: 'api', label: 'API usage' },
+          { value: 'payments', label: 'Payments' },
           { value: 'activity', label: 'Activity' },
         ]}
       />
@@ -415,6 +417,8 @@ function CustomerTabs({ customerId, subs, navigate }: { customerId: string; subs
 
       {tab === 'account' && <AccountTab customerId={customerId} subs={subs} planName={(id) => planLabel(plans.data, id)} />}
       {tab === 'activity' && <ActivityTab customerId={customerId} />}
+      {tab === 'api' && <ApiUsageTab customerId={customerId} metric={estimate.data?.billableMetric} aggregation={estimate.data?.aggregation} />}
+      {tab === 'payments' && <PaymentsTab customerId={customerId} />}
     </div>
   );
 }
@@ -531,5 +535,44 @@ function ActivityTab({ customerId }: { customerId: string }) {
         )}
       </div>
     </div>
+  );
+}
+
+function ApiUsageTab({ customerId, metric, aggregation }: { customerId: string; metric?: string; aggregation?: string }) {
+  const data = useAsync(() => get<UsageBreakdown>(`/usage/breakdown${qs({ customerId })}`), [customerId]);
+  if (data.loading && !data.data) return <Spinner label="Reading usage…" />;
+  if (data.error) return <ErrorNote error={data.error} onRetry={data.reload} />;
+  return <UsageBreakdownView data={data.data!} app="admin" billedMetric={metric} aggregation={aggregation} />;
+}
+
+function PaymentsTab({ customerId }: { customerId: string }) {
+  const list = useAsync(() => get<PaymentRecord[]>(`/payments${qs({ customerId })}`), [customerId]);
+  if (list.loading && !list.data) return <Spinner />;
+  if (!list.data?.length) return <Empty icon={<CreditCard size={22} />} title="No payments from this customer yet" />;
+  return (
+    <Table className="compact">
+      <thead>
+        <tr>
+          <th>When</th>
+          <th>For</th>
+          <th>Method</th>
+          <th>Status</th>
+          <th className="num">Amount</th>
+        </tr>
+      </thead>
+      <tbody>
+        {list.data.map((p) => (
+          <tr key={p.id}>
+            <td className="muted">{dateTime(p.createdAt)}</td>
+            <td>{p.invoiceId ? <a href={`#/invoices/${p.invoiceId}`} className="mono">INV-{p.invoiceId.slice(0, 8).toUpperCase()}</a> : <Badge tone="accent">Prepaid credit</Badge>}</td>
+            <td>{METHOD_LABEL[p.method] || p.method}</td>
+            <td>
+              <StatusBadge status={p.status} />
+            </td>
+            <td className={`num ${p.status === 'SUCCEEDED' ? 'amount-in' : 'amount-fail'}`}>{money(p.amount, p.currency)}</td>
+          </tr>
+        ))}
+      </tbody>
+    </Table>
   );
 }

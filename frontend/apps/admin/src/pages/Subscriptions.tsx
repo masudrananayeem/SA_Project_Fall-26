@@ -2,8 +2,8 @@ import { useMemo, useState } from 'react';
 import { CalendarClock, Pause, Play, Plus, XCircle } from 'lucide-react';
 import {
   Alert, Badge, Button, Card, Drawer, Empty, ErrorNote, Field, KeyValues, Modal, PageHeader, Spinner, StatusBadge, Table, Tabs,
-  currentPeriod, date, get, isoDay, money, post, qs, toNumber, useAction, useAsync,
-  type PlanChange, type Subscription,
+  billingModeLabel, currentPeriod, date, daysLabel, get, isoDay, money, post, qs, toNumber, useAction, useAsync,
+  type PlanChange, type Subscription, type SubscriptionAnalyticsRow,
 } from '@meterflow/shared';
 import { CustomerInput, PlanSelect, customerIds, latestPlans, planLabel, usePlans, useSubscriptions, type Navigate } from '../common';
 
@@ -11,12 +11,19 @@ export function SubscriptionsPage({ selected, navigate }: { selected?: string; n
   const subs = useSubscriptions();
   const plans = usePlans();
   const [creating, setCreating] = useState(false);
-  const [status, setStatus] = useState<'all' | 'ACTIVE' | 'PAUSED' | 'CANCELLED'>('all');
+  const [status, setStatus] = useState<'all' | 'ACTIVE' | 'UNPAID' | 'PAUSED' | 'CANCELLED'>('all');
+  const analytics = useAsync(() => get<SubscriptionAnalyticsRow[]>('/subscriptions/analytics'), []);
+  const tenure = (id: string) => analytics.data?.find((r) => r.subscriptionId === id);
 
   const rows = useMemo(
     () =>
       (subs.data || [])
-        .filter((s) => status === 'all' || s.status === status || (status === 'PAUSED' && s.status === 'PAUSED_DUNNING'))
+        .filter(
+          (s) =>
+            status === 'all' ||
+            s.status === status ||
+            (status === 'UNPAID' && ['PENDING_PAYMENT', 'BLOCKED', 'PAUSED_DUNNING'].includes(s.status)),
+        )
         .sort((a, b) => b.periodStart.localeCompare(a.periodStart)),
     [subs.data, status],
   );
@@ -42,6 +49,7 @@ export function SubscriptionsPage({ selected, navigate }: { selected?: string; n
             tabs={[
               { value: 'all', label: 'All' },
               { value: 'ACTIVE', label: 'Active' },
+              { value: 'UNPAID', label: 'Unpaid / blocked' },
               { value: 'PAUSED', label: 'Paused' },
               { value: 'CANCELLED', label: 'Cancelled' },
             ]}
@@ -58,9 +66,11 @@ export function SubscriptionsPage({ selected, navigate }: { selected?: string; n
                   <th>Customer</th>
                   <th>Plan</th>
                   <th>Status</th>
+                  <th>On this plan</th>
+                  <th className="hide-sm">Customer for</th>
                   <th>Period</th>
-                  <th>Seats</th>
-                  <th>Trial</th>
+                  <th className="hide-sm">Seats</th>
+                  <th className="hide-sm">Trial</th>
                   <th>Scheduled change</th>
                 </tr>
               </thead>
@@ -68,15 +78,23 @@ export function SubscriptionsPage({ selected, navigate }: { selected?: string; n
                 {rows.map((s) => (
                   <tr key={s.id} className="clickable" onClick={() => navigate(`subscriptions/${s.id}`)}>
                     <td className="strong">{s.customerId}</td>
-                    <td>{planLabel(plans.data, s.planId)}</td>
+                    <td>
+                      {planLabel(plans.data, s.planId)}
+                      <div className="muted small">{billingModeLabel(plans.data?.find((p) => p.id === s.planId)?.billingMode)}</div>
+                    </td>
                     <td>
                       <StatusBadge status={s.status} />
                     </td>
+                    <td>
+                      <b>{daysLabel(tenure(s.id)?.daysOnPlan)}</b>
+                      {tenure(s.id) && <div className="muted small">since {date(tenure(s.id)!.onPlanSince)}</div>}
+                    </td>
+                    <td className="hide-sm">{daysLabel(tenure(s.id)?.daysAsCustomer)}</td>
                     <td className="muted">
                       {s.periodStart} → {s.periodEnd}
                     </td>
-                    <td>{s.seatCount}</td>
-                    <td>{s.trialEnd ? <Badge tone={s.trialing ? 'info' : 'neutral'}>{s.trialing ? `until ${date(s.trialEnd)}` : s.trialStatus || 'ended'}</Badge> : '—'}</td>
+                    <td className="hide-sm">{s.seatCount}</td>
+                    <td className="hide-sm">{s.trialEnd ? <Badge tone={s.trialing ? 'info' : 'neutral'}>{s.trialing ? `until ${date(s.trialEnd)}` : s.trialStatus || 'ended'}</Badge> : '—'}</td>
                     <td className="muted">{s.scheduledPlanId ? `${planLabel(plans.data, s.scheduledPlanId)} on ${date(s.scheduledChangeDate)}` : '—'}</td>
                   </tr>
                 ))}

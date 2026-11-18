@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
-import { CalendarClock, Check, Layers, Save, UserCircle, Wallet, XCircle } from 'lucide-react';
+import { CalendarClock, Check, Layers, PlusCircle, Save, UserCircle, Wallet, XCircle } from 'lucide-react';
 import {
-  Alert, Badge, Button, Card, CardHeader, Empty, ErrorNote, Field, KeyValues, Modal, PageHeader, Spinner, Stat, StatusBadge, Table,
+  Alert, Badge, Button, Card, CardHeader, Empty, ErrorNote, Field, KeyValues, Modal, PageHeader, Spinner, Stat, StatusBadge, Table, TopUpModal, billingModeLabel,
   date, dateTime, get, money, post, put, qs, toNumber, useAction, useAsync,
   type Account, type CreditAccount, type CreditNote, type Plan, type PlanChange, type Subscription,
 } from '@meterflow/shared';
@@ -18,6 +18,7 @@ export function AccountPage({ customerId, navigate }: { customerId: string; navi
   const scheduled = plans.data?.find((p) => p.id === current?.scheduledPlanId);
   const history = useAsync(() => (current ? get<PlanChange[]>(`/subscriptions/${current.id}/plan-changes`) : Promise.resolve([] as PlanChange[])), [current?.id]);
   const [cancelling, setCancelling] = useState(false);
+  const [topUp, setTopUp] = useState(false);
   const planName = (id: string) => {
     const p = plans.data?.find((x) => x.id === id);
     return p ? `${p.name} v${p.version}` : id.slice(0, 8);
@@ -56,7 +57,8 @@ export function AccountPage({ customerId, navigate }: { customerId: string; navi
                 <div className="row-between">
                   <div>
                     <div className="strong" style={{ fontSize: 18 }}>
-                      {plan ? plan.name : 'Plan'} {plan && <Badge tone="accent">v{plan.version}</Badge>}
+                      {plan ? plan.name : 'Plan'} {plan && <Badge tone="accent">v{plan.version}</Badge>}{' '}
+                      {plan && <Badge tone={plan.billingMode === 'PREPAID' ? 'warn' : 'info'}>{billingModeLabel(plan.billingMode)}</Badge>}
                     </div>
                     <div className="muted">
                       {date(current.periodStart)} → {date(current.periodEnd)} · {current.seatCount} seat{current.seatCount > 1 ? 's' : ''}
@@ -119,6 +121,9 @@ export function AccountPage({ customerId, navigate }: { customerId: string; navi
         </div>
         <div className="stack">
           <Stat label="Prepaid credit" value={credit.data ? money(credit.data.balance, credit.data.currency) : '…'} hint="Applied automatically to your next invoice" icon={<Wallet size={17} />} tone="good" />
+          <Button variant="primary" icon={<PlusCircle size={16} />} onClick={() => setTopUp(true)}>
+            Add prepaid credit
+          </Button>
           <Card>
             <CardHeader title="Credit notes" />
             {notes.data?.length ? (
@@ -139,6 +144,16 @@ export function AccountPage({ customerId, navigate }: { customerId: string; navi
           </Card>
         </div>
       </div>
+      {topUp && (
+        <TopUpModal
+          currency={credit.data?.currency || plan?.currency || 'BDT'}
+          onClose={() => setTopUp(false)}
+          onDone={() => {
+            setTopUp(false);
+            void credit.reload();
+          }}
+        />
+      )}
       {cancelling && current && <CancelModal sub={current} onClose={() => setCancelling(false)} onDone={async () => (setCancelling(false), await subs.reload())} />}
     </>
   );
