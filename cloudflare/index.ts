@@ -94,11 +94,47 @@ export class MeterFlowApiContainer extends DurableObject<Env> {
   }
 }
 
+function container(env: Env) {
+  return env.METERFLOW_API.get(env.METERFLOW_API.idFromName("meterflow-api-singleton"));
+}
+
+/**
+ * Daily jobs. The container sleeps after 30 idle minutes, so Spring's own @Scheduled jobs may not
+ * be running at their time. This cron trigger wakes the container and runs every date-based job
+ * through its ADMIN endpoint. Every job is idempotent: running it twice changes nothing.
+ */
+async function runDailyJobs(env: Env, now: Date): Promise<void> {
+  if (!env.ADMIN_USERNAME || !env.ADMIN_PASSWORD) {
+    console.warn("Daily jobs skipped: ADMIN_USERNAME / ADMIN_PASSWORD secrets are not set.");
+    return;
+  }
+  const auth = "Basic " + btoa(`${env.ADMIN_USERNAME}:${env.ADMIN_PASSWORD}`);
+  const previousMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1)).toISOString().slice(0, 7);
+  const jobs: string[] = ["/api/subscriptions/lifecycle/run"];
+  if (now.getUTCDate() === 1) jobs.push(`/api/invoices/batch/run?period=${previousMonth}`);   // FR5 billing date
+  jobs.push("/api/invoices/prepaid/renew", "/api/dunning/process", "/api/payments/standing/enforce");
+  const api = container(env);
+  for (const path of jobs) {
+    try {
+      const response = await api.fetch(new Request(`https://meterflow.internal${path}`, {
+        method: "POST",
+        headers: { Authorization: auth, "X-Requested-With": "XMLHttpRequest", Accept: "application/json" },
+      }));
+      console.log(`daily job ${path}: ${response.status} ${(await response.text()).slice(0, 300)}`);
+    } catch (error) {
+      console.error(`daily job ${path} failed`, error);
+    }
+  }
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
     if (url.pathname === "/healthz") return Response.json({ service: "meterflow-cloudflare-gateway", status: "ok" });
-    const id = env.METERFLOW_API.idFromName("meterflow-api-singleton");
-    return env.METERFLOW_API.get(id).fetch(request);
+    return container(env).fetch(request);
+  },
+
+  async scheduled(controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+    ctx.waitUntil(runDailyJobs(env, new Date(controller.scheduledTime)));
   },
 };

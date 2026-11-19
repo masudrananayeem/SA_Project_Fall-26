@@ -228,6 +228,14 @@ Safe "webhooks" {
   Ok "delivery log readable ($($d.Count) deliveries)"
 }
 
+Step "Daily jobs (what the Cloudflare cron trigger calls)"
+Safe "daily-jobs" {
+  $lc = Api POST "/api/subscriptions/lifecycle/run"
+  Check ($null -ne $lc.trialsEnded -and $null -ne $lc.scheduledPlanChangesApplied) "trial / scheduled-change sweep ran"
+  $dp = Api POST "/api/dunning/process"
+  Check ($null -ne $dp) "dunning retry sweep ran"
+}
+
 Step "Migration (FR10)"
 Safe "migration" {
   $dry = Api POST "/api/catalogue/plans/$keyA/migrate-active?fromVersion=2&toVersion=1&dryRun=true"

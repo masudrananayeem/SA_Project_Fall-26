@@ -21,6 +21,8 @@ MeterFlow is a course-project implementation foundation for usage-based SaaS/API
 - Postpaid customers with 2 unpaid invoices are blocked automatically and unblocked when they pay.
 - Admin "Payments" page with a live feed and a payment bell; customers-per-plan and days-on-plan analytics.
 - Client "API" page: how to call the API and a breakdown of exactly what was used.
+- Requirement-by-requirement audit: `docs/CRITERIA-MASTER-STATUS.md`. Deployment (Neon + Cloudflare + Vercel): `docs/DEPLOYMENT.md`.
+- Backend tests without local Maven: `.\scripts\backend-tests.ps1`.
 - Details: `docs/V23-CHANGELOG.md`.
 
 ## V22 at a glance

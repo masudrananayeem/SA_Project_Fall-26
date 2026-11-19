@@ -1,4 +1,4 @@
-# CSE 444 — MeterFlow Master Criteria Audit (V18, 2026-11-16)
+# CSE 444 — MeterFlow Master Criteria Audit (V23 final, 2026-11-19)
 
 **Student:** Masud Rana Nayeem  
 **Student ID:** 0242310005101849  
@@ -8,7 +8,58 @@
 
 > Status vocabulary: **Implemented** = present in source; **Partial** = some code exists but acceptance condition is not met; **Pending evidence** = must be executed and raw output retained; **External dependency** = instructor input or live defence is required. Documentation alone is not proof of implementation.
 
-## V18 status
+## V23 final status (supersedes the V18 table below)
+
+Checked requirement by requirement against the source in this version. "Verified" means the item
+was exercised against the running stack by `scripts/feature-test.ps1` or a unit test. "Run it"
+means the mechanism is in place but needs a measured run on your machine (the command is given).
+
+### Functional requirements
+
+| ID | Requirement (short) | Status | Where in the code | Proof |
+|---|---|---|---|---|
+| FR1 | Batch ≤1,000 events, duplicates ignored, late ≤72 h after close → adjustment | Verified | `UsageController.BatchInput @Size(max=1000)`, `JdbcUsageEventStore` (`ON CONFLICT DO NOTHING`), `UsageService.periodClose` + `LateUsageAdjustment` | `UsageServiceIngestionTest`; feature test "40 accepted, re-send = 40 duplicates", future/late events |
+| FR2 | sum, count, max, unique count, latest; filters (region, endpoint) | Verified | `metering/aggregation/*`, `BillableUsageCalculator`, `GET /api/usage/aggregate` | `MetricAggregationTest`, `BillableMetricBillingTest`; feature test unique_count(endpoint)=4 |
+| FR3 | flat, per unit, graduated, volume, package, per seat; allowance; minimum; BDT/USD | Verified | `catalogue/charges/*` (6 strategies + registry), `PricingService` | `ChargeStrategiesTest`, `PriceQuoteTest`, `PricingServiceTest` |
+| FR4 | create, upgrade/downgrade (now + proration, or period end), pause, resume, cancel, trials | Verified | `SubscriptionState` (State), `PlanChangeService`, `SubscriptionLifecycleService` (+ `POST /api/subscriptions/lifecycle/run`) | `SubscriptionLifecycleTest`, `AccountStandingStateTest`; feature test plan change / pause / resume |
+| FR5 | Billing date → draft → finalise; each line has quantity, price rule, tax rule | Verified | `AbstractBillingRun` (Template Method), `InvoiceBuilder`, batch job; billing date = 1st of month 00:30 UTC (Spring) and 00:15 UTC (Cloudflare cron), see ADR-008 | `BillingRunTest`; feature test "billed once (CREATED, then EXISTING)", invoice lines |
+| FR6 | Prepaid credit used first; credit notes; late adjustments on next invoice | Verified | `CreditService.apply` before tax, `CreditNote`, late ledger read by the next billing run; V23 prepaid top-up | `CreditAccountTest`, `BillingRunTest.lateEvents…`; feature test top-up / credit note |
+| FR7 | Live usage + estimate ≤1 min; budgets with 50/80/100% alerts | Verified | `LiveSpendService` (30 s cache, same quote as billing), `BudgetService` (after each batch + 60 s sweep), customer pages refresh 30 s | `LiveSpendServiceTest`, `BudgetThresholdTest`; feature test budget alerts |
+| FR8 | Failed (mock) payment retried day 1, 3, 7 → past due → suspended → reactivated; notified | Verified | `DunningState.RETRY_DAYS = {1,3,7}`, `DunningCase`, mock provider, `BillingEventNotifier` | `DunningCaseTest`; feature test declined card → dunning → retries → paid |
+| FR9 | invoice.finalised, payment.failed, usage.threshold_reached; HMAC; backoff; log; replay | Verified | `WebhookDeliveryService` (HMAC-SHA256 over `timestamp.body`, exponential backoff, delivery rows, replay endpoint) | feature test webhook register / delivery log; replay: `POST /api/webhooks/deliveries/{id}/replay` |
+| FR10 | Edit = new version; subscriptions stay pinned; simulator for any version | Verified | `CatalogueController PUT` → new version, migration with dry run, `SimulationBillingRun` | `BillingRunTest.simulator…`; feature test v1 → v2, simulate versions |
+
+V23 additions on top of the brief: prepaid (pay-first) and postpaid plans, automatic block after
+2 unpaid invoices, payment ledger with live admin feed, days-on-plan analytics, usage breakdown and
+API guide page (see `V23-CHANGELOG.md`).
+
+### Quality attributes
+
+| ID | Status | How to produce the evidence |
+|---|---|---|
+| QA1 accuracy (1M events, 3% dup, 2% late, exact to the paisa) | Verified (harness) | `.\scripts\backend-tests.ps1 -Qa` runs `Qa1AccuracyTest`; earlier raw result in `quality-evidence/QA1-ACCURACY.md` |
+| QA2 2,000 events/s, p95 ≤100 ms during billing | Run it | `performance/ingest.js` with k6 against the local stack while a batch billing run is active (`QUALITY-ACCEPTANCE-RUNBOOK.md`) |
+| QA3 10,000 customers ≤10 min, kill + restart without duplicates | Run it | `BATCH-BILLING.md` QA3 procedure (seed, `POST /api/invoices/batch/run`, `docker kill`, restart, re-run, count) |
+| QA4 new plan = configuration; new charge type without editing existing classes | Verified | `ChargeRegistryExtensionTest`; feature test publishes plans by API only |
+| QA5 one-call trace; estimate within 1% of final | Verified (mechanism) | `GET /api/invoices/lines/{lineId}/trace`; estimate and invoice share `PricingService.quoteForPeriod` (`LiveSpendServiceTest`) |
+
+### Spring Boot architecture focus
+
+| Item | Status |
+|---|---|
+| Spring Modulith modules + verification test + event publication registry | Done: 10 modules, no cycles (checked again for V23), `ArchitectureTests` (run with `backend-tests.ps1`), ADR-006 |
+| Spring Batch: chunking, restartability, partitioning by customer | Done: `BillingBatchConfiguration` (8 partitions, chunk 25, checkpointed reader), stale-execution recovery |
+| JPA on PostgreSQL, Money value object, optimistic locking, idempotency keys | Done: `Money`, `@Version` on subscriptions/invoices/dunning/credits, unique idempotency key and `(customer, period)` invoice key |
+| Decoupled ingestion (outbox-backed queue) + cache for live estimates | Done: event publication registry (outbox), async listeners, Redis cache (simple cache on Cloudflare) |
+| Strategy, Composite, Visitor, State, Template Method, Builder, Observer | Done: see `PATTERN-JUSTIFICATION.md` (V23 adds `PrepaidBillingRun` as a third Template Method subclass and two new subscription states) |
+
+### What only you can supply
+- C10 instructor change request: implement it when it is given (do not invent one).
+- C11 Git history and AI-usage log: keep committing; update `PROCESS-LOG.md`.
+- C12 live defence: demo script in `DEFENCE-GUIDE.md`.
+- QA2 / QA3 timed runs: numbers depend on your machine; store the raw output in `quality-evidence/`.
+
+## V18 status (history)
 
 Status words: **Done** = implemented and covered by an executed test; **Implemented** = in source
 and compiled, but its test needs Maven/Docker that was not available here; **Pending evidence** =

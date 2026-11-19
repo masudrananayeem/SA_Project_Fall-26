@@ -84,3 +84,17 @@
 - **`scripts/feature-test.ps1` adds two sections:**
   - **Prepaid:** pay before use, the 1150.00 package invoice, usage refused then accepted, the payment ledger, the admin summary, top-up and renewal.
   - **Postpaid auto-block:** two unpaid invoices → BLOCKED, usage refused, paying one unblocks, plus the analytics and breakdown endpoints.
+
+## V23 final: criteria audit and deployment readiness
+- `docs/CRITERIA-MASTER-STATUS.md` has a new V23 table. It checks FR1–FR10, QA1–QA5 and the Spring Boot architecture focus one by one, naming the code and the test for each item.
+- New `POST /api/subscriptions/lifecycle/run` (ADMIN) runs the trial and scheduled-plan-change sweep on demand. It is idempotent.
+- The Cloudflare Worker has a daily cron trigger (`15 0 * * *`). It wakes the sleeping container and runs these jobs (ADR-008):
+  - trials;
+  - prepaid renewals;
+  - dunning retries;
+  - account standing;
+  - on the 1st, the month-end billing run.
+- New `scripts/backend-tests.ps1` runs the backend unit and Modulith tests in Docker (no local Maven needed) and stores the log in `docs/quality-evidence/`.
+- `feature-test.ps1` adds a check of the daily-job endpoints.
+- Fixed a compile error in `PaymentService` (ambiguous `log.info`).
+- `.gitignore` now also ignores `.wrangler/` and `.dev.vars`.

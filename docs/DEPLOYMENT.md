@@ -6,9 +6,11 @@ Browser ──> Vercel (admin console + customer portal, two static sites) ─�
 ```
 
 ## 0. Check locally first
-1. `cd backend && mvn verify` – must end with `BUILD SUCCESS`.
-2. `docker compose up --build -d` from the repository root, wait until `docker compose ps` shows the backend running.
-3. `powershell -ExecutionPolicy Bypass -File scripts/smoke-test.ps1` – must print `ALL CHECKS PASSED`.
+1. `.\scripts\backend-tests.ps1` – runs the unit + Modulith tests in Docker; must end with `ALL BACKEND TESTS PASSED`.
+2. `docker compose up --build -d` from the repository root; wait about a minute until
+   `Invoke-RestMethod http://localhost:8080/actuator/health` returns `UP`.
+3. `.\scripts\smoke-test.ps1` – must print `ALL CHECKS PASSED`.
+4. `.\scripts\feature-test.ps1` – must print `ALL FEATURES PASSED`.
 
 ## 1. Database (Neon example, free tier)
 1. neon.tech -> New project -> region close to you (e.g. Singapore).
@@ -48,6 +50,12 @@ curl https://meterflow-api.<your-subdomain>.workers.dev/actuator/health   # star
 powershell -ExecutionPolicy Bypass -File scripts/smoke-test.ps1 -BaseUrl https://meterflow-api.<your-subdomain>.workers.dev -Password <ADMIN_PASSWORD>
 ```
 
+Daily jobs: `wrangler.jsonc` has a cron trigger (`15 0 * * *` = 06:15 Dhaka). It wakes the
+container and runs trials, prepaid renewals, dunning retries, the account-standing check, and on the
+1st the month-end billing run (ADR-008). It uses the `ADMIN_USERNAME`/`ADMIN_PASSWORD` secrets.
+To try it right away: Cloudflare dashboard → Workers → meterflow-api → Settings → Triggers, or
+`npx wrangler tail` and wait for the next run.
+
 Logs: `npx wrangler tail` (Worker) and the Containers page in the Cloudflare dashboard. `npx wrangler containers list` shows status.
 The container sleeps after 30 minutes without requests; the next request starts it again (cold start).
 
@@ -80,6 +88,19 @@ npx wrangler secret put METERFLOW_CORS_ALLOWED_ORIGINS   # https://meterflow-adm
 npx wrangler deploy                                      # restarts the container with the new value
 ```
 Open the admin URL and sign in with the `ADMIN_USERNAME`/`ADMIN_PASSWORD` secrets; open the client URL and sign in with the `CUSTOMER_USERNAME`/`CUSTOMER_PASSWORD` secrets. The customer's username is its customer ID, so subscribe that ID in the admin console (Overview -> Prepare demo does it for `customer`).
+Customers can also create their own account on the portal ("Create account") and choose a plan; prepaid plans ask for payment first.
+
+## 5. Final check of the deployed system
+```powershell
+.\scripts\smoke-test.ps1   -BaseUrl https://meterflow-api.<your-subdomain>.workers.dev -Password <ADMIN_PASSWORD>
+.\scripts\feature-test.ps1 -BaseUrl https://meterflow-api.<your-subdomain>.workers.dev -Password <ADMIN_PASSWORD>
+```
+The feature test creates test plans and customers (names start with `ft-`). Run it on a fresh demo
+database, or skip it on a database you will present.
+
+## Never commit or share
+`.env`, `.dev.vars`, the Neon password, the admin password. Secrets go only into
+`npx wrangler secret put …`. `VITE_*` variables are public (they end up in the JavaScript).
 
 ## Troubleshooting
 | Symptom | Cause / fix |
@@ -92,5 +113,5 @@ Open the admin URL and sign in with the `ADMIN_USERNAME`/`ADMIN_PASSWORD` secret
 
 ## Production profile (optional)
 `SPRING_PROFILES_ACTIVE=prod` (Worker secret) switches to OIDC JWT login and Flyway `validate`
-(V1 + V2 migrations). It needs an identity provider (`METERFLOW_OIDC_ISSUER_URI`) issuing a `roles`
+(V1–V4 migrations). It needs an identity provider (`METERFLOW_OIDC_ISSUER_URI`) issuing a `roles`
 claim; the demo frontends sign in with Basic Auth, so keep `cloud` for the course demo.

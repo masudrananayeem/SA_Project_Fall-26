@@ -3,6 +3,10 @@
   "name": "meterflow-api",
   "main": "cloudflare/index.ts",
   "compatibility_date": "2026-11-16",
+  // Daily at 00:15 UTC (06:15 Dhaka): trials, renewals, dunning retries, account standing,
+  // and on the 1st the month-end billing run. See runDailyJobs in cloudflare/index.ts.
+  "triggers": { "crons": ["15 0 * * *"] },
+  "observability": { "enabled": true },
   "containers": [
     {
       "class_name": "MeterFlowApiContainer",
