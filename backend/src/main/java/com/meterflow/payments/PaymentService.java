@@ -231,7 +231,8 @@ public class PaymentService {
     @Scheduled(cron = "${meterflow.payments.standing-cron:0 20 * * * *}", zone = "UTC")
     public void scheduledStanding() {
         try {
-            log.info("Account standing: {}", transactions.execute(tx -> enforceStanding(null)));
+            Map<String, Object> outcome = transactions.execute(tx -> enforceStanding(null));
+            log.info("Account standing: {}", (Object) outcome);
         } catch (RuntimeException e) {
             log.error("Account standing check failed", e);
         }
