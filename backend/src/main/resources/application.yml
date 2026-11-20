@@ -73,6 +73,7 @@ meterflow:
     # Postpaid accounts with this many unpaid invoices (about two months of free use) are blocked
     # automatically: usage is refused until they pay. Checked after each invoice/payment and hourly.
     block-after-unpaid-invoices: ${METERFLOW_BLOCK_AFTER_UNPAID:2}
+    upgrade-grace-days: ${METERFLOW_UPGRADE_GRACE_DAYS:3}
     mock:
       failing-customers: ${METERFLOW_MOCK_FAILING_CUSTOMERS:}
   webhooks:

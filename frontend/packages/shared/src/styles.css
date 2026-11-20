@@ -534,3 +534,25 @@ tr.clickable:hover td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
   .toolbar .env-pill { display: none; }
   .crumbs > span:first-child, .crumbs .sep { display: none; }
 }
+
+/* V23.2: amount due / plan upgrade balance */
+.balance-card { padding: 18px 20px; }
+.balance-card.due { border-color: var(--warn-border); box-shadow: 0 0 0 3px var(--warn-soft); }
+.balance-top { display: flex; gap: 20px; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; }
+.balance-amount { font-size: 28px; font-weight: 700; letter-spacing: -0.02em; margin: 2px 0; }
+.balance-card.due .balance-amount { color: var(--warn); }
+.balance-side { display: flex; gap: 22px; flex-wrap: wrap; }
+.balance-side > div { display: flex; flex-direction: column; gap: 2px; min-width: 120px; }
+.balance-side b { font-size: 16px; }
+.due-list { list-style: none; margin: 14px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.due-list li { display: flex; gap: 12px; align-items: center; justify-content: space-between; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-2); }
+.due-list li > div { min-width: 0; }
+.text-bad { color: var(--bad); font-weight: 600; }
+.change-cost { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 12px 14px; background: var(--surface-2); }
+.change-cost .big { font-size: 22px; font-weight: 700; }
+@media (max-width: 640px) { .due-list li { flex-wrap: wrap; } .due-list li .btn { width: 100%; justify-content: center; } }
+.balance-foot { margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--border); }
+.kv-mini { display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
+.kv-mini > div { display: flex; justify-content: space-between; gap: 12px; }
+.kv-mini span { color: var(--text-2); }
+.kv-mini b { text-align: right; font-weight: 600; }

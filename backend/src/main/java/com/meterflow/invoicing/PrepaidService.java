@@ -76,7 +76,7 @@ public class PrepaidService {
     }
 
     /** Daily renewal: each active prepaid subscription gets its new month's package invoice and waits for payment. */
-    @Scheduled(cron = "${meterflow.billing.prepaid-renewal-cron:0 10 0 * * *}", zone = "UTC")
+    @Scheduled(cron = "${meterflow.billing.prepaid-renewal-cron:0 45 0 * * *}", zone = "UTC")
     public void scheduledRenewal() { renew(); }
 
     public Map<String, Object> renew() {

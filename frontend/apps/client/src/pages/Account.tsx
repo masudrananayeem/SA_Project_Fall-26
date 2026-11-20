@@ -6,6 +6,7 @@ import {
   type Account, type CreditAccount, type CreditNote, type Plan, type PlanChange, type Subscription,
 } from '@meterflow/shared';
 import { priceLines } from '../plans';
+import { AmountDueCard, useAccountState } from '../status';
 
 export function AccountPage({ customerId, navigate }: { customerId: string; navigate: (to: string) => void }) {
   const subs = useAsync(() => get<Subscription[]>('/subscriptions'), [customerId]);
@@ -17,6 +18,7 @@ export function AccountPage({ customerId, navigate }: { customerId: string; navi
   const plan = plans.data?.find((p) => p.id === current?.planId);
   const scheduled = plans.data?.find((p) => p.id === current?.scheduledPlanId);
   const history = useAsync(() => (current ? get<PlanChange[]>(`/subscriptions/${current.id}/plan-changes`) : Promise.resolve([] as PlanChange[])), [current?.id]);
+  const account = useAccountState(customerId);
   const [cancelling, setCancelling] = useState(false);
   const [topUp, setTopUp] = useState(false);
   const planName = (id: string) => {
@@ -28,6 +30,16 @@ export function AccountPage({ customerId, navigate }: { customerId: string; navi
     <>
       <PageHeader title="Account" subtitle="Your profile, subscription, prices and prepaid credit." />
       <ErrorNote error={subs.error || plans.error} onRetry={subs.reload} />
+      <div style={{ marginBottom: 18 }}>
+        <AmountDueCard
+          state={{
+            ...account,
+            reload: async () => {
+              await Promise.all([account.reload(), subs.reload(), credit.reload(), history.reload()]);
+            },
+          }}
+        />
+      </div>
       <div className="grid-3">
         <div className="stack">
           <Card>

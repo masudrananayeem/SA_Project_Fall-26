@@ -172,8 +172,21 @@ without `WWW-Authenticate` (no browser popup). Other clients keep the standard B
 | GET | `/api/payments?customerId=` | ADMIN, or CUSTOMER (own only) | Payment ledger (latest 200), successes and failures |
 | GET | `/api/payments/summary` | ADMIN | Totals today / 7 days / 30 days, failures today, block limit |
 | POST | `/api/payments/standing/enforce` | ADMIN | Block postpaid customers with 2+ unpaid invoices, unblock those who paid |
-| POST | `/api/invoices/prepaid/renew` | ADMIN | Issue this month's prepaid package invoices now (normally daily at 00:10 UTC) |
+| POST | `/api/invoices/prepaid/renew` | ADMIN | Issue this month's prepaid package invoices now (normally daily at 00:45 UTC, after the month-end run) |
 | GET | `/api/usage/breakdown?customerId&from&to` | ADMIN or owner | Events per metric, per day, per property value, latest events, and whether usage is accepted |
 
 New subscription statuses: `PENDING_PAYMENT` (prepaid, not paid yet) and `BLOCKED` (postpaid, too many unpaid invoices).
 In both, `POST /api/usage/events:batch` rejects the events with the reason in `rejectionDetails`.
+
+## V23.2 endpoints (plan upgrade balance)
+| Method | Route | Role | Purpose |
+|---|---|---|---|
+| GET | `/api/billing/upgrade-charges/preview?subscriptionId&planId` | ADMIN or owner | Cost of changing plan now. `mode`: `SETTLE_NOW` (pay `totalDueNow`), `CREDIT` (`creditNow` to credit balance), `NEXT_INVOICE` (postpaid, prorated at month end), `NONE`, `PERIOD_END_ONLY` (prepaid ↔ postpaid) |
+| GET | `/api/billing/upgrade-charges?customerId=` | ADMIN, or CUSTOMER (own) | Upgrade balances: already paid, remaining days, difference, VAT, total, status `DUE`/`PAID` |
+| POST | `/api/payments/mock/upgrade-charges/{id}/pay?method=card\|wallet\|bank` | ADMIN or owner | Pay an upgrade balance (ledger kind `UPGRADE`) |
+| GET | `/api/payments/balance?customerId=` | ADMIN, or CUSTOMER (own) | `totalDueNow`, `unpaidInvoices[]`, `upgradeCharges[]` (with `payBy`, `overdue`), `paidThisMonth`, `creditBalance` |
+
+Rule: an upgrade inside a month that is already invoiced (a prepaid package paid up front) costs
+`(new recurring − old recurring) × remaining days / days in month` + VAT.
+A downgrade credits the same amount (pre-VAT) to the credit balance.
+An immediate change between prepaid and postpaid is refused (400): it can only start at period end.

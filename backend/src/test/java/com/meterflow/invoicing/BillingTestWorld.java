@@ -86,6 +86,9 @@ public class BillingTestWorld {
         when(changeRepo.findBySubscriptionIdAndInvoiceIdIsNullAndEffectiveDateBefore(any(), any())).thenAnswer(inv -> planChanges.stream()
                 .filter(c -> c.getSubscriptionId().equals(inv.getArgument(0)) && c.getInvoiceId() == null
                         && c.getEffectiveDate().isBefore(inv.getArgument(1))).toList());
+        when(changeRepo.findBySubscriptionIdOrderByEffectiveDateDesc(any())).thenAnswer(inv -> planChanges.stream()
+                .filter(c -> c.getSubscriptionId().equals(inv.getArgument(0)))
+                .sorted(Comparator.comparing(PlanChange::getEffectiveDate).reversed()).toList());
         when(changeRepo.saveAll(any())).thenAnswer(inv -> inv.getArgument(0));
 
         var invoiceRepo = mock(InvoiceRepository.class);

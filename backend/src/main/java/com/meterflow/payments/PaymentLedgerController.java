@@ -26,6 +26,19 @@ public class PaymentLedgerController {
         return payments.recent(auth.getName());
     }
 
+    /** Amount due now (unpaid invoices + upgrade balances), paid this month and credit balance. */
+    @GetMapping("/balance")
+    public Map<String, Object> balance(@RequestParam(required = false) String customerId, Authentication auth) {
+        boolean admin = auth.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN"));
+        if (admin) {
+            if (customerId == null || customerId.isBlank()) throw new IllegalArgumentException("customerId is required");
+            return payments.balance(customerId);
+        }
+        if (customerId != null && !customerId.equals(auth.getName()))
+            throw new AccessDeniedException("Customers may only see their own balance");
+        return payments.balance(auth.getName());
+    }
+
     @PreAuthorize("hasRole('ADMIN')")
     @GetMapping("/summary")
     public Map<String, Object> summary() { return payments.summary(); }

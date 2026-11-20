@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { AlertOctagon, Ban, CalendarClock, CheckCircle2, CircleDollarSign, RefreshCw, Search, ShieldCheck, Wallet, XCircle } from 'lucide-react';
+import { AlertOctagon, ArrowUpCircle, Ban, CalendarClock, CheckCircle2, CircleDollarSign, RefreshCw, Search, ShieldCheck, Wallet, XCircle } from 'lucide-react';
 import {
   Alert, Badge, Button, Card, CardHeader, Empty, ErrorNote, PageHeader, Spinner, Stat, StatusBadge, Table, Tabs,
-  METHOD_LABEL, dateTime, get, invoiceNo, money, post, timeAgo, useAction, useAsync,
-  type PaymentRecord, type PaymentSummary, type SubscriptionAnalyticsRow,
+  METHOD_LABEL, PayUpgradeModal, dateTime, get, invoiceNo, money, payableFromCharge, periodLabel, post, timeAgo, useAction, useAsync,
+  type PaymentRecord, type PaymentSummary, type SubscriptionAnalyticsRow, type UpgradeCharge,
 } from '@meterflow/shared';
 import type { Navigate } from '../common';
 
@@ -13,6 +13,8 @@ export function PaymentsPage({ navigate }: { navigate: Navigate }) {
   const feed = useAsync(() => get<PaymentRecord[]>('/payments'), []);
   const summary = useAsync(() => get<PaymentSummary>('/payments/summary'), []);
   const standing = useAsync(() => get<SubscriptionAnalyticsRow[]>('/subscriptions/analytics'), []);
+  const upgrades = useAsync(() => get<UpgradeCharge[]>('/billing/upgrade-charges').catch(() => [] as UpgradeCharge[]), []);
+  const [marking, setMarking] = useState<UpgradeCharge | null>(null);
   const [filter, setFilter] = useState<Filter>('all');
   const [q, setQ] = useState('');
   const [fresh, setFresh] = useState<Set<string>>(new Set());
@@ -24,6 +26,7 @@ export function PaymentsPage({ navigate }: { navigate: Navigate }) {
     const t = setInterval(() => {
       void feed.reload();
       void summary.reload();
+      void upgrades.reload();
     }, 8000);
     return () => clearInterval(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -116,14 +119,16 @@ export function PaymentsPage({ navigate }: { navigate: Navigate }) {
                         </a>
                       </td>
                       <td>
-                        {p.invoiceId ? (
+                        {p.kind === 'UPGRADE' ? (
+                          <Badge tone="warn">Plan upgrade balance</Badge>
+                        ) : p.invoiceId ? (
                           <a href={`#/invoices/${p.invoiceId}`} onClick={(e) => (e.preventDefault(), navigate(`invoices/${p.invoiceId}`))} className="mono">
                             {invoiceNo(p.invoiceId)}
                           </a>
                         ) : (
                           <Badge tone="accent">Prepaid credit</Badge>
                         )}
-                        {p.message && <div className="muted small">{p.message}</div>}
+                        {p.message && p.kind !== 'UPGRADE' && <div className="muted small">{p.message}</div>}
                       </td>
                       <td>
                         <span className="method-chip">{METHOD_LABEL[p.method] || p.method}</span>
@@ -186,6 +191,56 @@ export function PaymentsPage({ navigate }: { navigate: Navigate }) {
             </div>
           </Card>
           <Card>
+            <CardHeader
+              title={<span className="row"><ArrowUpCircle size={18} /> Plan upgrade balances</span>}
+              subtitle={`Mid-month upgrades of paid packages: the customer pays only the difference for the remaining days (due within ${s?.upgradeGraceDays ?? 3} days)`}
+            />
+            {(upgrades.data || []).filter((u) => u.status === 'DUE').length ? (
+              <div className="list">
+                {(upgrades.data || [])
+                  .filter((u) => u.status === 'DUE')
+                  .map((u) => (
+                    <div key={u.id} className="list-item">
+                      <span className="list-icon">
+                        <ArrowUpCircle size={15} />
+                      </span>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <a href={`#/customers/${encodeURIComponent(u.customerId)}`} className="strong">
+                          {u.customerId}
+                        </a>
+                        <div className="muted small">
+                          {u.fromPlan} → {u.toPlan} · {periodLabel(u.period)} · paid {money(u.alreadyPaid, u.currency)}
+                        </div>
+                      </div>
+                      <Button size="sm" onClick={() => setMarking(u)}>
+                        {money(u.total, u.currency)} due
+                      </Button>
+                    </div>
+                  ))}
+              </div>
+            ) : (
+              <Alert tone="good">No upgrade balance is waiting for payment.</Alert>
+            )}
+            {!!(upgrades.data || []).filter((u) => u.status === 'PAID').length && (
+              <div className="muted small" style={{ marginTop: 10 }}>
+                {(upgrades.data || []).filter((u) => u.status === 'PAID').length} upgrade balance(s) already paid.
+              </div>
+            )}
+          </Card>
+          {marking && (
+            <PayUpgradeModal
+              charge={payableFromCharge(marking)}
+              admin
+              laterLabel="Close"
+              intro={<Alert>Record this balance as paid only when the customer has paid outside the portal (for example by bank transfer).</Alert>}
+              onClose={() => setMarking(null)}
+              onPaid={() => {
+                setMarking(null);
+                void Promise.all([upgrades.reload(), feed.reload(), summary.reload(), standing.reload()]);
+              }}
+            />
+          )}
+          <Card>
             <CardHeader title="How payments work" />
             <ul className="plain-list">
               <li>
@@ -193,6 +248,10 @@ export function PaymentsPage({ navigate }: { navigate: Navigate }) {
               </li>
               <li>
                 <b>Prepaid</b> plans: the package is invoiced when the customer subscribes and on the 1st of each month; usage starts after payment.
+              </li>
+              <li>
+                <b>Upgrades</b> in the middle of a paid month: the customer pays only the difference for the days left. If it is not paid within {s?.upgradeGraceDays ?? 3} days the
+                service waits for payment.
               </li>
               <li>Nothing is charged automatically; admins can charge the card on file or mark an invoice paid.</li>
             </ul>

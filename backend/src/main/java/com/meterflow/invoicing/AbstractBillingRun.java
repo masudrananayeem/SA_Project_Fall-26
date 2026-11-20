@@ -129,7 +129,7 @@ public abstract class AbstractBillingRun {
         if (!sub.getPeriodStart().isBefore(next) || !sub.getPeriodEnd().isAfter(start.minusDays(1)))
             return "Subscription does not overlap the period";
         if (PricingService.fullyInTrial(sub.getTrialEnd(), ctx.period)) return "Period is inside the free trial";
-        UUID planId = planOverride == null ? sub.getPlanId() : planOverride;
+        UUID planId = planOverride == null ? planAtEndOf(sub, ctx.period) : planOverride;
         Plan plan = plans.findById(planId).orElseThrow(() -> new IllegalStateException("Plan not found: " + planId));
         ctx.subscription = sub;
         ctx.plan = plan;
@@ -138,6 +138,21 @@ public abstract class AbstractBillingRun {
                 .seats(sub.getSeatCount())
                 .tax(TaxVisitor.vat(plan.getTaxRate()));
         return null;
+    }
+
+    /**
+     * The plan in force on the last day of the period. A change that took effect later (for
+     * example a period-end downgrade applied on the 1st, before the month-end run) must not
+     * re-price the month that just closed, so the earliest such change gives the plan to use.
+     */
+    protected UUID planAtEndOf(Subscription sub, YearMonth period) {
+        LocalDate next = period.plusMonths(1).atDay(1);
+        PlanChange first = null;
+        for (PlanChange change : planChanges.findBySubscriptionIdOrderByEffectiveDateDesc(sub.getId())) {
+            if (change.getEffectiveDate().isBefore(next)) continue;
+            if (first == null || change.getEffectiveDate().isBefore(first.getEffectiveDate())) first = change;
+        }
+        return first == null ? sub.getPlanId() : first.getFromPlanId();
     }
 
     protected void rateUsage(BillingContext ctx) {

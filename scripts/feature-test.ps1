@@ -308,6 +308,35 @@ Safe "prepaid" {
   Check ($sum.today.count -ge 1) "admin summary: $($sum.today.count) payment(s) today, $($sum.today.amount)"
   $top = Api POST "/api/payments/mock/top-up" @{ amount = 300; currency = "BDT"; method = "card" } $preHeaders
   Check ([decimal]$top.balance -ge 300) "customer buys prepaid credit (balance $($top.balance))"
+
+  # Mid-month upgrade of a paid prepaid package: pay only the difference for the remaining days.
+  $big = Api POST "/api/catalogue/plans" @{ planKey = "ft-pre-big-$run"; name = "FT Prepaid Big"; currency = "BDT"; flatFee = 2000; unitPrice = 0; metric = "api_calls";
+    freeAllowance = 200000; minimumCommitment = 0; taxRate = 15; billingMode = "PREPAID" }
+  $pv = Api GET "/api/billing/upgrade-charges/preview?subscriptionId=$($ps.id)&planId=$($big.id)" $null $preHeaders
+  $dim = [DateTime]::DaysInMonth($today.Year, $today.Month); $left = $dim - $today.Day + 1
+  $expSub = [Math]::Round(1000 * $left / $dim, 2, [MidpointRounding]::AwayFromZero)
+  $expTotal = $expSub + [Math]::Round($expSub * 0.15, 2, [MidpointRounding]::AwayFromZero)
+  Check ($pv.mode -eq "SETTLE_NOW" -and [Math]::Abs([decimal]$pv.totalDueNow - $expTotal) -le 0.02) "upgrade preview: pay $($pv.totalDueNow) now for $left of $dim days (expected $expTotal)"
+  Api POST "/api/subscriptions/$($ps.id)/change-plan" @{ planId = $big.id; timing = "IMMEDIATE" } $preHeaders | Out-Null
+  Start-Sleep -Seconds 4
+  $uc = @(Api GET "/api/billing/upgrade-charges" $null $preHeaders | Where-Object { $_.status -eq "DUE" })
+  Check ($uc.Count -eq 1 -and [decimal]$uc[0].total -eq [decimal]$pv.totalDueNow -and [decimal]$uc[0].alreadyPaid -eq 1150) "balance due after upgrade: already paid 1150.00, rest $($uc[0].total)"
+  $bal = Api GET "/api/payments/balance" $null $preHeaders
+  Check ([decimal]$bal.totalDueNow -eq [decimal]$uc[0].total) "client balance shows $($bal.totalDueNow) due now"
+  $again = Api POST "/api/invoices/run/customer?customerId=$preUser&period=$period"
+  Check ($again.status -eq "EXISTING") "the month's invoice is not duplicated by the upgrade"
+  $up = Api POST "/api/payments/mock/upgrade-charges/$($uc[0].id)/pay?method=card" $null $preHeaders
+  Check ($up.paymentStatus -eq "SUCCEEDED") "customer pays the upgrade balance"
+  $bal2 = Api GET "/api/payments/balance" $null $preHeaders
+  Check ([decimal]$bal2.totalDueNow -eq 0) "nothing left to pay after the upgrade balance"
+  Check (@(Api GET "/api/payments" | Where-Object { $_.customerId -eq $preUser -and $_.kind -eq "UPGRADE" }).Count -eq 1) "admin feed shows the upgrade payment"
+  $code = StatusOf { Api POST "/api/subscriptions/$($ps.id)/change-plan" @{ planId = $a1.id; timing = "IMMEDIATE" } $preHeaders }
+  Check ($code -eq 400) "prepaid -> postpaid only at period end (immediate refused: $code)"
+  $cBefore = [decimal](Api GET "/api/credits?customerId=$preUser" $null $preHeaders).balance
+  Api POST "/api/subscriptions/$($ps.id)/change-plan" @{ planId = $pp.id; timing = "IMMEDIATE" } $preHeaders | Out-Null
+  Start-Sleep -Seconds 4
+  $cAfter = [decimal](Api GET "/api/credits?customerId=$preUser" $null $preHeaders).balance
+  Check ([Math]::Abs(($cAfter - $cBefore) - $expSub) -le 0.02) "downgrade back: unused $([Math]::Round($cAfter - $cBefore, 2)) added to credit"
   $ren = Api POST "/api/invoices/prepaid/renew"
   Check ($null -ne $ren.renewed) "prepaid renewal job runs ($($ren.renewed) renewed)"
 }

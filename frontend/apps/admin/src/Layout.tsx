@@ -124,7 +124,7 @@ function PaymentBell({ navigate }: { navigate: (to: string) => void }) {
             .slice(0, 3)
             .forEach((p) =>
               p.status === 'SUCCEEDED'
-                ? toast.success(`${p.customerId} paid ${money(p.amount, p.currency)}${p.kind === 'TOP_UP' ? ' (prepaid credit)' : ''}`)
+                ? toast.success(`${p.customerId} paid ${money(p.amount, p.currency)}${p.kind === 'TOP_UP' ? ' (prepaid credit)' : p.kind === 'UPGRADE' ? ' (plan upgrade balance)' : ''}`)
                 : toast.error(`Payment failed: ${p.customerId} ${money(p.amount, p.currency)}`),
             );
         }
@@ -184,6 +184,7 @@ function PaymentBell({ navigate }: { navigate: (to: string) => void }) {
                   <div>
                     <b>{p.customerId}</b> {p.status === 'SUCCEEDED' ? 'paid' : 'payment failed'} {money(p.amount, p.currency)}
                     {p.kind === 'TOP_UP' && ' (credit)'}
+                    {p.kind === 'UPGRADE' && ' (upgrade)'}
                   </div>
                   <div className="muted small">{timeAgo(p.createdAt)}</div>
                 </div>

@@ -1,0 +1,31 @@
+-- V23.2: balance due after a mid-month upgrade in an already-invoiced (prepaid) month.
+CREATE TABLE upgrade_charges (
+    id               UUID PRIMARY KEY,
+    customer_id      VARCHAR(255)   NOT NULL,
+    subscription_id  UUID           NOT NULL,
+    plan_change_id   UUID           NOT NULL,
+    invoice_id       UUID,
+    period           VARCHAR(7)     NOT NULL,
+    currency         VARCHAR(3)     NOT NULL,
+    from_plan        VARCHAR(160)   NOT NULL,
+    to_plan          VARCHAR(160)   NOT NULL,
+    effective_date   DATE           NOT NULL,
+    remaining_days   INTEGER        NOT NULL,
+    days_in_period   INTEGER        NOT NULL,
+    already_invoiced NUMERIC(18, 2) NOT NULL,
+    already_paid     NUMERIC(18, 2) NOT NULL,
+    old_recurring    NUMERIC(18, 2) NOT NULL,
+    new_recurring    NUMERIC(18, 2) NOT NULL,
+    subtotal         NUMERIC(18, 2) NOT NULL,
+    tax              NUMERIC(18, 2) NOT NULL,
+    total            NUMERIC(18, 2) NOT NULL,
+    tax_rule         VARCHAR(60),
+    explanation      VARCHAR(500),
+    status           VARCHAR(20)    NOT NULL,
+    reference        VARCHAR(120),
+    created_at       TIMESTAMP WITH TIME ZONE NOT NULL,
+    paid_at          TIMESTAMP WITH TIME ZONE,
+    version          BIGINT         NOT NULL DEFAULT 0,
+    CONSTRAINT uk_upgrade_charge_plan_change UNIQUE (plan_change_id)
+);
+CREATE INDEX idx_upgrade_charges_customer ON upgrade_charges (customer_id, created_at);

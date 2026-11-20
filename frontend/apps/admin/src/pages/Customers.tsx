@@ -1,9 +1,9 @@
 import { useMemo, useState } from 'react';
 import { Bell, CalendarCheck, Clock, CreditCard, FileText, Receipt, Search, UserPlus, Users } from 'lucide-react';
 import {
-  Alert, Badge, Button, Card, Drawer, EstimateBreakdown, Empty, ErrorNote, Field, InvoiceTable, KeyValues, METHOD_LABEL, Modal, PageHeader, Progress, Spinner, Stat, StatusBadge, Table, Tabs, UsageBreakdownView,
+  Alert, Badge, BalanceCard, Button, Card, Drawer, EstimateBreakdown, Empty, ErrorNote, Field, InvoiceTable, KeyValues, METHOD_LABEL, Modal, PageHeader, Progress, Spinner, Stat, StatusBadge, Table, Tabs, UsageBreakdownView,
   currentPeriod, date, dateTime, get, isoDay, money, periodLabel, post, qs, qty, timeAgo, toNumber, useAction, useAsync,
-  type Account, type BillingOutcome, type PaymentRecord, type UsageBreakdown, type BudgetEvaluation, type CreditAccount, type CustomerNotification, type Estimate, type Invoice, type LateAdjustment, type Plan, type Subscription, type UsageSummary,
+  type Account, type BalanceDue, type BillingOutcome, type PaymentRecord, type UsageBreakdown, type BudgetEvaluation, type CreditAccount, type CustomerNotification, type Estimate, type Invoice, type LateAdjustment, type Plan, type Subscription, type UsageSummary,
 } from '@meterflow/shared';
 import { PlanSelect, latestPlans, planLabel, usePlans, type Navigate } from '../common';
 
@@ -547,9 +547,27 @@ function ApiUsageTab({ customerId, metric, aggregation }: { customerId: string; 
 
 function PaymentsTab({ customerId }: { customerId: string }) {
   const list = useAsync(() => get<PaymentRecord[]>(`/payments${qs({ customerId })}`), [customerId]);
+  const balance = useAsync(() => get<BalanceDue>(`/payments/balance${qs({ customerId })}`), [customerId]);
   if (list.loading && !list.data) return <Spinner />;
-  if (!list.data?.length) return <Empty icon={<CreditCard size={22} />} title="No payments from this customer yet" />;
+  const card = balance.data && (
+    <BalanceCard
+      admin
+      balance={balance.data}
+      onChanged={() => {
+        void Promise.all([balance.reload(), list.reload()]);
+      }}
+    />
+  );
+  if (!list.data?.length)
+    return (
+      <div className="stack">
+        {card}
+        <Empty icon={<CreditCard size={22} />} title="No payments from this customer yet" />
+      </div>
+    );
   return (
+    <div className="stack">
+    {card}
     <Table className="compact">
       <thead>
         <tr>
@@ -564,7 +582,15 @@ function PaymentsTab({ customerId }: { customerId: string }) {
         {list.data.map((p) => (
           <tr key={p.id}>
             <td className="muted">{dateTime(p.createdAt)}</td>
-            <td>{p.invoiceId ? <a href={`#/invoices/${p.invoiceId}`} className="mono">INV-{p.invoiceId.slice(0, 8).toUpperCase()}</a> : <Badge tone="accent">Prepaid credit</Badge>}</td>
+            <td>
+              {p.kind === 'UPGRADE' ? (
+                <Badge tone="warn">Plan upgrade balance</Badge>
+              ) : p.invoiceId ? (
+                <a href={`#/invoices/${p.invoiceId}`} className="mono">INV-{p.invoiceId.slice(0, 8).toUpperCase()}</a>
+              ) : (
+                <Badge tone="accent">Prepaid credit</Badge>
+              )}
+            </td>
             <td>{METHOD_LABEL[p.method] || p.method}</td>
             <td>
               <StatusBadge status={p.status} />
@@ -574,5 +600,6 @@ function PaymentsTab({ customerId }: { customerId: string }) {
         ))}
       </tbody>
     </Table>
+    </div>
   );
 }

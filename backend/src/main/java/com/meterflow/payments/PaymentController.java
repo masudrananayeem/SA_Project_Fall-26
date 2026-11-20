@@ -1,6 +1,7 @@
 package com.meterflow.payments;
 
 import com.meterflow.invoicing.InvoiceRepository;
+import com.meterflow.invoicing.UpgradeChargeRepository;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotNull;
@@ -20,11 +21,24 @@ public class PaymentController {
     private final InvoiceRepository invoices;
     private final PaymentService payments;
     private final MockPaymentProvider provider;
+    private final UpgradeChargeRepository upgradeCharges;
 
-    public PaymentController(InvoiceRepository invoices, PaymentService payments, MockPaymentProvider provider) {
+    public PaymentController(InvoiceRepository invoices, PaymentService payments, MockPaymentProvider provider,
+                             UpgradeChargeRepository upgradeCharges) {
         this.invoices = invoices;
         this.payments = payments;
         this.provider = provider;
+        this.upgradeCharges = upgradeCharges;
+    }
+
+    /** Pay the balance due after a mid-month plan upgrade (customer: own charge; admin: any). */
+    @PreAuthorize("hasAnyRole('ADMIN','CUSTOMER')")
+    @PostMapping("/upgrade-charges/{chargeId}/pay")
+    public Map<String, Object> payUpgrade(@PathVariable UUID chargeId, @RequestParam(required = false) String method, Authentication auth) {
+        var charge = upgradeCharges.findById(chargeId).orElseThrow(() -> new NoSuchElementException("Charge not found"));
+        if (!isAdmin(auth) && !auth.getName().equals(charge.getCustomerId()))
+            throw new AccessDeniedException("Customers may only pay their own charges");
+        return payments.payUpgradeCharge(chargeId, method == null ? (isAdmin(auth) ? "admin" : "card") : method);
     }
 
     /** Customer pays an open invoice (mock checkout: method card, wallet or bank); admin "mark as paid". */

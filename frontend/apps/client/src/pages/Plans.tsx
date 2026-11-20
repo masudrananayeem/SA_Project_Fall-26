@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { CalendarClock, Check, CreditCard, Sparkles, Wallet } from 'lucide-react';
 import {
-  Alert, Badge, Button, Card, Empty, ErrorNote, Field, Modal, PageHeader, PayInvoiceModal, Spinner, TopUpModal,
-  billingModeLabel, currentPeriod, date, get, money, post, qs, toNumber, useAction, useAsync, useToast,
-  type Invoice, type Plan, type Subscription,
+  Alert, Badge, Button, Card, Empty, ErrorNote, Field, Modal, PageHeader, PayInvoiceModal, PayUpgradeModal, Spinner, TopUpModal,
+  billingModeLabel, currentPeriod, date, get, money, payableFromCharge, periodLabel, post, qs, toNumber, useAction, useAsync, useToast,
+  type Invoice, type Plan, type PlanChangePreview, type Subscription, type UpgradeCharge,
 } from '@meterflow/shared';
 import { catalogue, chargesOf, headlinePrice, priceLines } from '../plans';
 
@@ -21,11 +21,23 @@ async function waitForPackageInvoice(customerId: string): Promise<Invoice | null
   return null;
 }
 
+/** The upgrade balance is created asynchronously right after an immediate change; wait for it briefly. */
+async function waitForUpgradeCharge(customerId: string, since: number): Promise<UpgradeCharge | null> {
+  for (let i = 0; i < 12; i++) {
+    const list = await get<UpgradeCharge[]>(`/billing/upgrade-charges${qs({ customerId })}`).catch(() => [] as UpgradeCharge[]);
+    const c = list.find((x) => x.status === 'DUE' && new Date(x.createdAt).getTime() >= since - 60_000);
+    if (c) return c;
+    await sleep(700);
+  }
+  return null;
+}
+
 export function PlansPage({ customerId, navigate }: { customerId: string; navigate: (to: string) => void }) {
   const plans = useAsync(() => get<Plan[]>('/catalogue/plans'), []);
   const subs = useAsync(() => get<Subscription[]>('/subscriptions'), [customerId]);
   const [chosen, setChosen] = useState<Plan | null>(null);
   const [payInvoice, setPayInvoice] = useState<Invoice | null>(null);
+  const [payUpgrade, setPayUpgrade] = useState<UpgradeCharge | null>(null);
   const [advance, setAdvance] = useState<Plan | null>(null);
   const [mode, setMode] = useState<'all' | 'POSTPAID' | 'PREPAID'>('all');
   const current = (subs.data || [])
@@ -151,9 +163,12 @@ export function PlansPage({ customerId, navigate }: { customerId: string; naviga
             else if (r.advance) setAdvance(chosen);
             else navigate('home');
           }}
-          onChanged={async () => {
+          onChanged={async (charge) => {
             setChosen(null);
-            await done();
+            if (charge) {
+              await subs.reload();
+              setPayUpgrade(charge);
+            } else await done();
           }}
         />
       )}
@@ -168,6 +183,25 @@ export function PlansPage({ customerId, navigate }: { customerId: string; naviga
           }}
           onPaid={() => {
             setPayInvoice(null);
+            void done();
+          }}
+        />
+      )}
+      {payUpgrade && (
+        <PayUpgradeModal
+          charge={payableFromCharge(payUpgrade)}
+          intro={
+            <Alert tone="warn">
+              You are now on <b>{payUpgrade.toPlan}</b>. You already paid {money(payUpgrade.alreadyPaid, payUpgrade.currency)} for {periodLabel(payUpgrade.period)};
+              pay the rest now. If you pay later, it stays on your dashboard and the service pauses when it is overdue.
+            </Alert>
+          }
+          onClose={() => {
+            setPayUpgrade(null);
+            navigate('home');
+          }}
+          onPaid={() => {
+            setPayUpgrade(null);
             void done();
           }}
         />
@@ -200,9 +234,16 @@ function ConfirmPlan({
   customerId: string;
   onClose: () => void;
   onSubscribed: (r: { invoice?: Invoice | null; advance?: boolean }) => void;
-  onChanged: () => void;
+  onChanged: (upgradeDue?: UpgradeCharge | null) => void;
 }) {
   const [timing, setTiming] = useState<'IMMEDIATE' | 'PERIOD_END'>('PERIOD_END');
+  const preview = useAsync(
+    () => (current ? get<PlanChangePreview>(`/billing/upgrade-charges/preview${qs({ subscriptionId: current.id, planId: plan.id })}`) : Promise.resolve(null)),
+    [current?.id, plan.id],
+  );
+  const pv = preview.data;
+  const periodEndOnly = pv?.mode === 'PERIOD_END_ONLY';
+  const effectiveTiming = periodEndOnly ? 'PERIOD_END' : timing;
   const [seats, setSeats] = useState('1');
   const [payNow, setPayNow] = useState(true);
   const [stage, setStage] = useState<string | null>(null);
@@ -214,12 +255,26 @@ function ConfirmPlan({
 
   const confirm = async () => {
     if (current) {
+      const started = Date.now();
       const r = await run(
         'go',
-        () => post<{ timing: string; prorationDelta?: number; currency?: string; effectiveDate?: string }>(`/subscriptions/${current.id}/change-plan`, { planId: plan.id, timing }),
-        (x) => (x.timing === 'IMMEDIATE' ? `You are now on ${plan.name}. A proration of ${money(x.prorationDelta, x.currency)} appears on this month’s invoice.` : `${plan.name} starts on ${date(x.effectiveDate)}.`),
+        () => post<{ timing: string; prorationDelta?: number; currency?: string; effectiveDate?: string }>(`/subscriptions/${current.id}/change-plan`, { planId: plan.id, timing: effectiveTiming }),
+        (x) =>
+          x.timing !== 'IMMEDIATE'
+            ? `${plan.name} starts on ${date(x.effectiveDate)}.`
+            : pv?.mode === 'SETTLE_NOW'
+              ? `You are now on ${plan.name}. ${money(pv.totalDueNow, pv.currency)} is left to pay for this month.`
+              : pv?.mode === 'CREDIT'
+                ? `You are now on ${plan.name}. ${money(pv.creditNow, pv.currency)} was added to your credit.`
+                : `You are now on ${plan.name}. This month’s invoice charges each plan for the days it was active.`,
       );
-      if (r) onChanged();
+      if (!r) return;
+      if (r.timing === 'IMMEDIATE' && pv?.mode === 'SETTLE_NOW') {
+        setStage('Working out the balance for the rest of the month…');
+        const charge = await waitForUpgradeCharge(customerId, started);
+        setStage(null);
+        onChanged(charge);
+      } else onChanged(null);
       return;
     }
     const sub = await run('go', () => post<Subscription>('/subscriptions/self', { planId: plan.id, seatCount: perSeat ? Number(seats) || 1 : undefined }));
@@ -248,7 +303,7 @@ function ConfirmPlan({
             Cancel
           </Button>
           <Button variant="primary" icon={!current && payNow ? <CreditCard size={16} /> : undefined} loading={busy === 'go' || !!stage} onClick={confirm}>
-            {current ? 'Confirm change' : prepaid ? (payNow ? 'Continue to payment' : 'Reserve, pay later') : payNow ? 'Start and pay advance' : 'Start plan'}
+            {current ? (effectiveTiming === 'IMMEDIATE' && pv?.mode === 'SETTLE_NOW' ? `Change now and pay ${money(pv.totalDueNow, pv.currency)}` : 'Confirm change') : prepaid ? (payNow ? 'Continue to payment' : 'Reserve, pay later') : payNow ? 'Start and pay advance' : 'Start plan'}
           </Button>
         </>
       }
@@ -269,12 +324,14 @@ function ConfirmPlan({
         {current ? (
           <>
             <Field label="When should the change happen?">
-              <select value={timing} onChange={(e) => setTiming(e.target.value as 'IMMEDIATE' | 'PERIOD_END')}>
+              <select value={effectiveTiming} disabled={periodEndOnly} onChange={(e) => setTiming(e.target.value as 'IMMEDIATE' | 'PERIOD_END')}>
                 <option value="PERIOD_END">From the 1st of next month</option>
-                <option value="IMMEDIATE">Now (the difference for the rest of this month is prorated)</option>
+                <option value="IMMEDIATE">Now (pay only the difference for the rest of this month)</option>
               </select>
             </Field>
-            {prepaid && <Alert>Prepaid packages are paid at the start of each month. From the next month you pay before using the service.</Alert>}
+            {periodEndOnly && <Alert>Switching between prepaid and pay-after-use billing starts on the 1st of next month.</Alert>}
+            <ChangeCost preview={pv} loading={preview.loading} timing={effectiveTiming} />
+            {stage && <Alert>{stage}</Alert>}
           </>
         ) : (
           <>
@@ -312,5 +369,63 @@ function ConfirmPlan({
         )}
       </div>
     </Modal>
+  );
+}
+
+/** What the change costs: shown before the customer confirms. */
+function ChangeCost({ preview: pv, loading, timing }: { preview?: PlanChangePreview | null; loading: boolean; timing: 'IMMEDIATE' | 'PERIOD_END' }) {
+  if (loading && !pv) return <Spinner label="Working out the price…" />;
+  if (!pv) return null;
+  const cur = pv.currency;
+  const after = (
+    <div className="muted small">
+      From next month: <b>{money(pv.monthlyPriceAfter, cur)}</b> per month incl. VAT{toNumber(pv.newRecurring) > 0 ? '' : ' + usage'}.
+    </div>
+  );
+  if (timing === 'PERIOD_END' || pv.mode === 'PERIOD_END_ONLY')
+    return (
+      <div className="change-cost stack-sm">
+        <div>Nothing changes this month and nothing extra is charged.</div>
+        {after}
+      </div>
+    );
+  if (pv.mode === 'SETTLE_NOW')
+    return (
+      <div className="change-cost stack-sm">
+        <div className="muted small">To pay now for the rest of {periodLabel(pv.effectiveDate.slice(0, 7))}</div>
+        <div className="big">{money(pv.totalDueNow, cur)}</div>
+        <div className="kv-mini">
+          <div><span>Already paid this month</span><b>{money(pv.alreadyPaid, cur)}</b></div>
+          <div><span>{pv.toPlan}, {pv.remainingDays} of {pv.daysInPeriod} days</span><b>{money((toNumber(pv.newRecurring) * pv.remainingDays) / pv.daysInPeriod, cur)}</b></div>
+          <div><span>{pv.fromPlan} for the same days (paid)</span><b>− {money((toNumber(pv.oldRecurring) * pv.remainingDays) / pv.daysInPeriod, cur)}</b></div>
+          <div><span>Difference + VAT</span><b>{money(pv.difference, cur)} + {money(pv.tax, cur)}</b></div>
+        </div>
+        {after}
+      </div>
+    );
+  if (pv.mode === 'CREDIT')
+    return (
+      <div className="change-cost stack-sm">
+        <div>
+          Nothing to pay. The unused part of this month, <b>{money(pv.creditNow, cur)}</b>, is added to your credit and used on your next invoice.
+        </div>
+        {after}
+      </div>
+    );
+  if (pv.mode === 'NEXT_INVOICE')
+    return (
+      <div className="change-cost stack-sm">
+        <div>
+          Nothing to pay now. Your invoice at the end of this month charges each plan only for the days it was active
+          ({toNumber(pv.difference) >= 0 ? 'about ' + money(pv.difference, cur) + ' more' : 'about ' + money(-toNumber(pv.difference), cur) + ' less'} before VAT).
+        </div>
+        {after}
+      </div>
+    );
+  return (
+    <div className="change-cost stack-sm">
+      <div>No price difference for this month.</div>
+      {after}
+    </div>
   );
 }

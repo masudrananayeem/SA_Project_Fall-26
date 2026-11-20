@@ -2,7 +2,7 @@ import { useState, type ReactNode } from 'react';
 import { Building2, CreditCard, Download, FileText, GitBranch, Lock, Search, Smartphone, XCircle, Zap } from 'lucide-react';
 import { apiText, get, post } from './api';
 import { date, dateTime, downloadText, invoiceNo, money, periodLabel, qty, shortId, toNumber } from './format';
-import type { Estimate, Invoice, InvoiceLine, LineTrace, PaymentResult } from './types';
+import type { BalanceDue, Estimate, Invoice, InvoiceLine, LineTrace, PaymentResult, UpgradeCharge } from './types';
 import { Alert, Badge, Button, Card, CardHeader, Code, Empty, ErrorNote, KeyValues, Modal, Spinner, StatusBadge, Table, useAction, useAsync } from './ui';
 
 export function InvoiceTable({ invoices, onOpen, showCustomer = true, empty }: { invoices: Invoice[]; onOpen?: (i: Invoice) => void; showCustomer?: boolean; empty?: string }) {
@@ -292,6 +292,11 @@ export const METHOD_LABEL: Record<string, string> = {
   card: 'Card', wallet: 'Mobile wallet', bank: 'Bank transfer', admin: 'Recorded by admin', manual: 'Manual', card_on_file: 'Card on file',
 };
 
+/** What a ledger row paid for, in plain words. */
+export const PAYMENT_KIND_LABEL: Record<string, string> = {
+  INVOICE: 'Invoice', TOP_UP: 'Prepaid credit', UPGRADE: 'Plan upgrade balance',
+};
+
 function MethodPicker({ value, onChange }: { value: Method; onChange: (m: Method) => void }) {
   return (
     <div className="pay-methods" role="radiogroup" aria-label="Payment method">
@@ -313,7 +318,10 @@ function MethodPicker({ value, onChange }: { value: Method; onChange: (m: Method
  * Customer checkout for one invoice. Nothing is paid until the customer confirms here.
  * Test mode: the mock provider records the payment; no card or wallet details are collected.
  */
-export function PayInvoiceModal({ invoice, onClose, onPaid, laterLabel = 'Not now', intro }: { invoice: Invoice; onClose: () => void; onPaid: () => void; laterLabel?: string; intro?: ReactNode }) {
+/** The fields of an invoice the checkout needs (a full Invoice works too). */
+export type PayableInvoice = Pick<Invoice, 'id' | 'total' | 'currency' | 'period' | 'status'>;
+
+export function PayInvoiceModal({ invoice, onClose, onPaid, laterLabel = 'Not now', intro }: { invoice: PayableInvoice; onClose: () => void; onPaid: () => void; laterLabel?: string; intro?: ReactNode }) {
   const [method, setMethod] = useState<Method>('card');
   const { busy, run } = useAction();
   const pay = async () => {
@@ -397,5 +405,175 @@ export function TopUpModal({ currency = 'BDT', suggested = 500, onClose, onDone,
         <Alert>Credit is used automatically for your next invoices. Test mode: no real money moves.</Alert>
       </div>
     </Modal>
+  );
+}
+
+/** The charge shape the checkout needs: a full UpgradeCharge, or a row of GET /payments/balance. */
+export interface PayableUpgrade {
+  id: string;
+  period: string;
+  fromPlan: string;
+  toPlan: string;
+  alreadyPaid: number | string;
+  total: number | string;
+  currency: string;
+  remainingDays?: number;
+  daysInPeriod?: number;
+  oldRecurring?: number | string;
+  newRecurring?: number | string;
+  subtotal?: number | string;
+  tax?: number | string;
+  taxRule?: string | null;
+  effectiveDate?: string;
+}
+
+export function payableFromCharge(c: UpgradeCharge): PayableUpgrade {
+  return { ...c, id: c.id };
+}
+
+/**
+ * Pay the balance left after a mid-month upgrade: what was already paid for the month, the new
+ * plan's price for the remaining days, the old plan's price for the same days, VAT and the balance due.
+ */
+export function PayUpgradeModal({ charge, onClose, onPaid, laterLabel = 'Pay later', admin, intro }: { charge: PayableUpgrade; onClose: () => void; onPaid: () => void; laterLabel?: string; admin?: boolean; intro?: ReactNode }) {
+  const [method, setMethod] = useState<Method>('card');
+  const { busy, run } = useAction();
+  const full = charge.remainingDays != null && charge.daysInPeriod != null;
+  const pay = async () => {
+    const r = await run('pay', () => post<{ paymentStatus: string }>(`/payments/mock/upgrade-charges/${charge.id}/pay?method=${admin ? 'admin' : method}`), (x) =>
+      x.paymentStatus === 'SUCCEEDED' ? `Upgrade balance of ${money(charge.total, charge.currency)} paid. Thank you!` : x.paymentStatus === 'ALREADY_PAID' ? 'This balance was already paid.' : `Payment ${x.paymentStatus.toLowerCase()}`,
+    );
+    if (r) onPaid();
+  };
+  const rows: [ReactNode, ReactNode][] = [
+    ['Plan change', <span key="pc">{charge.fromPlan} → <b>{charge.toPlan}</b></span>],
+    ['Already paid for ' + periodLabel(charge.period), money(charge.alreadyPaid, charge.currency)],
+  ];
+  if (full) {
+    rows.push([`New plan, remaining ${charge.remainingDays} of ${charge.daysInPeriod} days`, money((toNumber(charge.newRecurring) * charge.remainingDays!) / charge.daysInPeriod!, charge.currency)]);
+    rows.push([`Old plan for the same days (already paid)`, '− ' + money((toNumber(charge.oldRecurring) * charge.remainingDays!) / charge.daysInPeriod!, charge.currency)]);
+    rows.push(['Difference', money(charge.subtotal, charge.currency)]);
+    rows.push([charge.taxRule || 'VAT', money(charge.tax, charge.currency)]);
+  }
+  return (
+    <Modal
+      open
+      title="Pay the rest for your upgrade"
+      onClose={onClose}
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose}>
+            {laterLabel}
+          </Button>
+          <Button variant="primary" icon={<Lock size={15} />} loading={busy === 'pay'} onClick={pay}>
+            {admin ? 'Mark as paid' : 'Pay'} {money(charge.total, charge.currency)}
+          </Button>
+        </>
+      }
+    >
+      <div className="stack-sm">
+        {intro}
+        <div className="pay-summary">
+          <div>
+            <div className="muted small">Balance still due</div>
+            <div className="invoice-total">{money(charge.total, charge.currency)}</div>
+          </div>
+          <Badge tone="warn">Due</Badge>
+        </div>
+        <div className="kv-mini">
+          {rows.map(([k, v], i) => (
+            <div key={i}>
+              <span>{k}</span>
+              <b>{v}</b>
+            </div>
+          ))}
+        </div>
+        {!admin && <MethodPicker value={method} onChange={setMethod} />}
+        <Alert>Test mode: this demo records the payment with a mock provider. No real money moves and no card details are collected.</Alert>
+      </div>
+    </Modal>
+  );
+}
+
+/**
+ * "Amount due" summary: unpaid invoices and upgrade balances with a pay button each, what was paid
+ * this month and the credit balance. Used on the customer dashboard, invoices and account pages,
+ * and (with admin) in the admin customer drawer.
+ */
+export function BalanceCard({ balance, onChanged, admin, extra }: { balance: BalanceDue; onChanged: () => void; admin?: boolean; extra?: ReactNode }) {
+  const [invoice, setInvoice] = useState<PayableInvoice | null>(null);
+  const [upgrade, setUpgrade] = useState<PayableUpgrade | null>(null);
+  const due = toNumber(balance.totalDueNow);
+  const cur = balance.currency || 'BDT';
+  return (
+    <Card className={`balance-card${due > 0 ? ' due' : ''}`}>
+      <div className="balance-top">
+        <div>
+          <div className="muted small">Amount due now</div>
+          <div className="balance-amount">{money(due, cur)}</div>
+          <div className="muted small">{due > 0 ? (admin ? 'Waiting for the customer to pay' : 'Nothing is charged automatically — pay below') : 'Nothing to pay right now'}</div>
+        </div>
+        <div className="balance-side">
+          <div>
+            <span className="muted small">Paid this month</span>
+            <b>{money(balance.paidThisMonth, cur)}</b>
+          </div>
+          <div>
+            <span className="muted small">Credit balance</span>
+            <b>{money(balance.creditBalance, balance.creditCurrency || cur)}</b>
+          </div>
+        </div>
+      </div>
+      {(balance.upgradeCharges.length > 0 || balance.unpaidInvoices.length > 0) && (
+        <ul className="due-list">
+          {balance.upgradeCharges.map((c) => (
+            <li key={c.chargeId}>
+              <div>
+                <b>Plan upgrade: {c.fromPlan} → {c.toPlan}</b>
+                <div className="muted small">
+                  Already paid {money(c.alreadyPaid, c.currency)} for {periodLabel(c.period)} · rest due {c.overdue ? <span className="text-bad">overdue — service paused until paid</span> : `by ${date(c.payBy)}`}
+                </div>
+              </div>
+              <Button size="sm" variant="primary" onClick={() => setUpgrade({ ...c, id: c.chargeId })}>
+                {admin ? 'Mark paid' : 'Pay'} {money(c.total, c.currency)}
+              </Button>
+            </li>
+          ))}
+          {balance.unpaidInvoices.map((i) => (
+            <li key={i.invoiceId}>
+              <div>
+                <b>Invoice {invoiceNo(i.invoiceId)}</b>
+                <div className="muted small">{periodLabel(i.period)}</div>
+              </div>
+              <Button size="sm" variant="primary" onClick={() => setInvoice({ id: i.invoiceId, total: i.total, currency: i.currency, period: i.period, status: 'FINALISED' })}>
+                {admin ? 'Mark paid' : 'Pay'} {money(i.total, i.currency)}
+              </Button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {extra}
+      {invoice && (
+        <PayInvoiceModal
+          invoice={invoice}
+          onClose={() => setInvoice(null)}
+          onPaid={() => {
+            setInvoice(null);
+            onChanged();
+          }}
+        />
+      )}
+      {upgrade && (
+        <PayUpgradeModal
+          charge={upgrade}
+          admin={admin}
+          onClose={() => setUpgrade(null)}
+          onPaid={() => {
+            setUpgrade(null);
+            onChanged();
+          }}
+        />
+      )}
+    </Card>
   );
 }

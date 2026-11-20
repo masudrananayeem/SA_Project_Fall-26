@@ -98,3 +98,66 @@
 - `feature-test.ps1` adds a check of the daily-job endpoints.
 - Fixed a compile error in `PaymentService` (ambiguous `log.info`).
 - `.gitignore` now also ignores `.wrangler/` and `.dev.vars`.
+
+## V23.2: balance due after a plan upgrade, and a billing fix
+
+### What the customer sees
+- **Before confirming a plan change**, the dialog shows exactly what it costs:
+  - **Prepaid package already paid this month (upgrade):** "To pay now for the rest of the month" with the breakdown:
+    - already paid this month;
+    - new plan for the remaining N of D days;
+    - minus the old plan for the same days;
+    - VAT;
+    - the price from next month.
+  - **Downgrade:** the unused part goes to the credit balance (credit note) and is used on the next invoice.
+  - **Postpaid:** nothing to pay now; the month-end invoice charges each plan only for the days it was active.
+  - **Prepaid ↔ postpaid:** only from the 1st of next month (an immediate switch is refused with a clear message).
+- **After an upgrade**, the pay dialog opens immediately ("Pay the rest for your upgrade"). "Pay later" is allowed.
+- **New "Amount due now" card** on Overview, Invoices and Account:
+  - unpaid invoices and upgrade balances, each with a Pay button;
+  - paid this month;
+  - credit balance;
+  - for postpaid plans, the month's estimate minus credit, which is what will be paid at month end.
+- **The status banner** says "Plan upgraded: X still to pay … please pay by <date>".
+- **If an upgrade balance stays unpaid for 3 days** (`METERFLOW_UPGRADE_GRACE_DAYS`), the prepaid service waits for payment (usage refused) until it is paid. Paying it resumes the service at once.
+- **Invoices page:** "Plan upgrades" table, and payment history labelled "Plan upgrade balance".
+
+### What the admin sees
+- **Payments page:**
+  - a "Plan upgrade balances" list (due ones, with "mark as paid");
+  - live-feed rows labelled "Plan upgrade balance";
+  - the payment bell names upgrade payments.
+- **Customer drawer → Payments:** the same "Amount due now" card for that customer.
+
+### Backend
+- `PlanChanged` event (subscriptions) → `UpgradeChargeService` (invoicing):
+  - If the month is already invoiced, it creates an `UpgradeCharge` (upgrade) or a credit note (downgrade).
+  - The month's invoice is never changed or duplicated: the unique `(customer, period)` key stays.
+  - The plan change is marked settled, so the next invoice does not prorate it again.
+- `GET /api/billing/upgrade-charges/preview?subscriptionId&planId`: the cost of changing plan now.
+- `GET /api/billing/upgrade-charges`: list (admin: all; customer: own).
+- `POST /api/payments/mock/upgrade-charges/{id}/pay?method=`: pay an upgrade balance. It is recorded in the ledger as kind `UPGRADE`.
+- `GET /api/payments/balance?customerId=` returns:
+  - amount due now;
+  - unpaid invoices and upgrade balances;
+  - paid this month;
+  - credit balance.
+- Flyway `V5__upgrade_charges.sql` (prod). Dev and cloud create the table with Hibernate `update`.
+- **Fix (FR4/FR5):** a closed month is now billed with the plan **in force on its last day**.
+  - Before, a period-end change applied on the 1st (before the 00:30 billing run) re-priced the month that had just closed at the new plan.
+- Prepaid renewal runs at 00:45 UTC: after the 00:10 trial/scheduled-change sweep and the 00:30 month-end billing run, so a customer moving from postpaid to prepaid on the 1st still gets the closed postpaid month billed (the Cloudflare cron uses the same order).
+
+### Tests
+- `PlanChangeSettlementTest`:
+  - half-month upgrade = half the difference;
+  - the full difference on the 1st;
+  - a downgrade is negative;
+  - for every day of the month, the balance equals the postpaid proration rule;
+  - a closed month is priced by the plan of that month.
+- **`feature-test.ps1`:**
+  - the upgrade preview matches the formula;
+  - the balance due equals the preview;
+  - the month's invoice is not duplicated;
+  - paying clears the balance and shows in the admin feed;
+  - an immediate prepaid → postpaid switch is refused (400);
+  - a downgrade adds the unused part to credit.

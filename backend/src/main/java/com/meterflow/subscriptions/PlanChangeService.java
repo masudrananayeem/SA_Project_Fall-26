@@ -3,6 +3,7 @@ package com.meterflow.subscriptions;
 import com.meterflow.catalogue.Plan;
 import com.meterflow.catalogue.PlanRepository;
 import com.meterflow.catalogue.PricingService;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -33,13 +34,15 @@ public class PlanChangeService {
     private final PlanRepository plans;
     private final PlanChangeRepository changes;
     private final PricingService pricing;
+    private final ApplicationEventPublisher events;
 
     public PlanChangeService(SubscriptionRepository subscriptions, PlanRepository plans,
-                             PlanChangeRepository changes, PricingService pricing) {
+                             PlanChangeRepository changes, PricingService pricing, ApplicationEventPublisher events) {
         this.subscriptions = subscriptions;
         this.plans = plans;
         this.changes = changes;
         this.pricing = pricing;
+        this.events = events;
     }
 
     /** Pure proration calculation, exposed for tests and the migration dry run. */
@@ -63,7 +66,9 @@ public class PlanChangeService {
         BigDecimal delta = deltaFor(sub, from, to, effective);
         String explanation = kind + " change " + from.getPlanKey() + " v" + from.getVersion() + " -> " + to.getPlanKey()
                 + " v" + to.getVersion() + " on " + effective + ": (old recurring - new recurring) x elapsed days / days in month";
-        return changes.save(new PlanChange(sub.getId(), from.getId(), to.getId(), delta, to.getCurrency(), effective, kind, explanation));
+        var saved = changes.save(new PlanChange(sub.getId(), from.getId(), to.getId(), delta, to.getCurrency(), effective, kind, explanation));
+        events.publishEvent(new PlanChanged(sub.getId(), sub.getCustomerId(), saved.getId(), from.getId(), to.getId(), effective, kind));
+        return saved;
     }
 
     /** Upgrade/downgrade now, with proration posted to this month's invoice. */
@@ -72,6 +77,9 @@ public class PlanChangeService {
         var sub = subscriptions.findById(subscriptionId).orElseThrow(() -> new IllegalArgumentException("Subscription not found"));
         var from = plans.findById(sub.getPlanId()).orElseThrow();
         var to = plans.findById(planId).orElseThrow(() -> new IllegalArgumentException("Plan not found"));
+        if (to.getId().equals(from.getId())) throw new IllegalArgumentException("The subscription is already on this plan");
+        if (from.isPrepaid() != to.isPrepaid())
+            throw new IllegalArgumentException("Switching between prepaid and postpaid billing takes effect at the start of next month: choose 'at period end'");
         LocalDate today = LocalDate.now(ZoneOffset.UTC);
         LocalDate effective = today.isBefore(sub.getPeriodStart()) ? sub.getPeriodStart() : today;
         if (!effective.isBefore(sub.getPeriodEnd())) throw new IllegalStateException("Subscription period ended");

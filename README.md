@@ -19,6 +19,7 @@ MeterFlow is a course-project implementation foundation for usage-based SaaS/API
 
 - Plans are **postpaid** (use first, pay later) or **prepaid** (pay first). Prepaid subscriptions wait for payment before usage is accepted.
 - Postpaid customers with 2 unpaid invoices are blocked automatically and unblocked when they pay.
+- Upgrading a paid prepaid package mid-month shows what was already paid and the balance still due for the remaining days, and asks the customer to pay it ("Amount due now" card on Overview, Invoices and Account). Downgrades go to credit.
 - Admin "Payments" page with a live feed and a payment bell; customers-per-plan and days-on-plan analytics.
 - Client "API" page: how to call the API and a breakdown of exactly what was used.
 - Requirement-by-requirement audit: `docs/CRITERIA-MASTER-STATUS.md`. Deployment (Neon + Cloudflare + Vercel): `docs/DEPLOYMENT.md`.

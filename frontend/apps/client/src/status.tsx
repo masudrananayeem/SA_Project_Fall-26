@@ -1,14 +1,16 @@
 import { useState } from 'react';
-import { AlertTriangle, Ban, CheckCircle2, CreditCard, Hourglass } from 'lucide-react';
+import { AlertTriangle, ArrowUpCircle, Ban, CheckCircle2, CreditCard, Hourglass } from 'lucide-react';
 import {
-  Button, PayInvoiceModal, get, money, periodLabel, qs, toNumber, useAsync, currentPeriod,
-  type Invoice, type Plan, type Subscription,
+  BalanceCard, Button, PayInvoiceModal, PayUpgradeModal, date, get, money, periodLabel, qs, toNumber, useAsync, currentPeriod,
+  type BalanceDue, type Invoice, type PayableUpgrade, type Plan, type Subscription,
 } from '@meterflow/shared';
 
 export interface AccountState {
   subscription?: Subscription;
   plan?: Plan;
   unpaid: Invoice[];
+  /** Amount due now (unpaid invoices + plan-upgrade balances), paid this month, credit. */
+  balance?: BalanceDue | null;
   reload: () => Promise<void>;
   loading: boolean;
 }
@@ -16,10 +18,11 @@ export interface AccountState {
 /** The customer's live subscription, its plan and the invoices still waiting for payment. */
 export function useAccountState(customerId: string): AccountState {
   const data = useAsync(async () => {
-    const [subs, plans, invoices] = await Promise.all([
+    const [subs, plans, invoices, balance] = await Promise.all([
       get<Subscription[]>('/subscriptions'),
       get<Plan[]>('/catalogue/plans'),
       get<Invoice[]>(`/invoices${qs({ customerId })}`),
+      get<BalanceDue>(`/payments/balance${qs({ customerId })}`).catch(() => null),
     ]);
     const subscription = subs
       .slice()
@@ -29,6 +32,7 @@ export function useAccountState(customerId: string): AccountState {
       subscription,
       plan: plans.find((p) => p.id === subscription?.planId),
       unpaid: invoices.filter((i) => i.status === 'FINALISED' && toNumber(i.total) > 0).sort((a, b) => a.period.localeCompare(b.period)),
+      balance,
     };
   }, [customerId]);
   return { ...(data.data || { unpaid: [] }), reload: data.reload, loading: data.loading };
@@ -40,22 +44,64 @@ export function useAccountState(customerId: string): AccountState {
  */
 export function AccountStatusBanner({ state, compact }: { state: AccountState; compact?: boolean }) {
   const [paying, setPaying] = useState<Invoice | null>(null);
+  const [payingUpgrade, setPayingUpgrade] = useState<PayableUpgrade | null>(null);
   const { subscription: sub, plan, unpaid } = state;
   if (!sub) return null;
+  const upgrades = state.balance?.upgradeCharges || [];
+  const firstUpgrade = upgrades[0];
+  const packageUnpaid = unpaid.some((i) => i.period === currentPeriod());
   const due = unpaid.reduce((a, i) => a + toNumber(i.total), 0);
   const currency = unpaid[0]?.currency || plan?.currency || 'BDT';
   const first = unpaid[0];
-  const modal = paying && (
-    <PayInvoiceModal
-      invoice={paying}
-      onClose={() => setPaying(null)}
-      onPaid={() => {
-        setPaying(null);
-        void state.reload();
-      }}
-    />
+  const modal = (
+    <>
+      {paying && (
+        <PayInvoiceModal
+          invoice={paying}
+          onClose={() => setPaying(null)}
+          onPaid={() => {
+            setPaying(null);
+            void state.reload();
+          }}
+        />
+      )}
+      {payingUpgrade && (
+        <PayUpgradeModal
+          charge={payingUpgrade}
+          onClose={() => setPayingUpgrade(null)}
+          onPaid={() => {
+            setPayingUpgrade(null);
+            void state.reload();
+          }}
+        />
+      )}
+    </>
   );
+  const upgradeHero = (tone: 'warn' | 'bad') =>
+    firstUpgrade && (
+      <>
+        {modal}
+        <div className={`status-hero ${tone}`}>
+          <ArrowUpCircle size={22} />
+          <div>
+            <b>
+              {tone === 'bad' ? 'Service paused: ' : 'Plan upgraded: '}
+              {money(firstUpgrade.total, firstUpgrade.currency)} still to pay for {firstUpgrade.toPlan}
+            </b>
+            <div className="muted small">
+              You already paid {money(firstUpgrade.alreadyPaid, firstUpgrade.currency)} for {periodLabel(firstUpgrade.period)} on {firstUpgrade.fromPlan}. The
+              rest of this month on the bigger plan costs {money(firstUpgrade.total, firstUpgrade.currency)} incl. VAT.{' '}
+              {tone === 'bad' ? 'Usage is refused until it is paid.' : `Please pay by ${date(firstUpgrade.payBy)}; after that the service pauses until it is paid.`}
+            </div>
+          </div>
+          <Button variant="primary" icon={<CreditCard size={16} />} onClick={() => setPayingUpgrade({ ...firstUpgrade, id: firstUpgrade.chargeId })}>
+            Pay {money(firstUpgrade.total, firstUpgrade.currency)} now
+          </Button>
+        </div>
+      </>
+    );
 
+  if (sub.status === 'PENDING_PAYMENT' && !packageUnpaid && firstUpgrade) return upgradeHero('bad');
   if (sub.status === 'PENDING_PAYMENT') {
     return (
       <>
@@ -99,6 +145,7 @@ export function AccountStatusBanner({ state, compact }: { state: AccountState; c
       </>
     );
   }
+  if (firstUpgrade && !unpaid.length) return upgradeHero('warn');
   if (unpaid.length) {
     return (
       <>
@@ -132,4 +179,32 @@ export function AccountStatusBanner({ state, compact }: { state: AccountState; c
       </div>
     </div>
   );
+}
+
+/**
+ * "Amount due" card for the customer: what is still to pay now (invoices and plan-upgrade
+ * balances), what was paid this month and the credit balance. Postpaid plans also see what the
+ * month-end invoice is expected to be after their credit is used.
+ */
+export function AmountDueCard({ state, estimateTotal, estimateCurrency }: { state: AccountState; estimateTotal?: number | null; estimateCurrency?: string }) {
+  const b = state.balance;
+  if (!b || !state.subscription) return null;
+  const prepaid = state.plan?.billingMode === 'PREPAID';
+  const credit = toNumber(b.creditBalance);
+  const extra =
+    !prepaid && estimateTotal != null ? (
+      <div className="balance-foot muted small">
+        This month so far (estimate): <b>{money(estimateTotal, estimateCurrency || b.currency)}</b>
+        {credit > 0 && (
+          <>
+            {' '}− credit {money(credit, b.creditCurrency)} = expected to pay at month end{' '}
+            <b>{money(Math.max(0, estimateTotal - credit), estimateCurrency || b.currency)}</b>
+          </>
+        )}
+        . Postpaid: invoiced on the 1st, then you pay it.
+      </div>
+    ) : prepaid ? (
+      <div className="balance-foot muted small">Prepaid: each month's package is paid before use. Upgrades in the middle of a month only cost the difference for the days that are left.</div>
+    ) : null;
+  return <BalanceCard balance={b} onChanged={() => void state.reload()} extra={extra} />;
 }

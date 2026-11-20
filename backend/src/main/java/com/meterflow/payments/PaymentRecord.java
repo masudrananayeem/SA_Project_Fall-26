@@ -17,6 +17,8 @@ import java.util.UUID;
 public class PaymentRecord {
     public static final String INVOICE = "INVOICE";
     public static final String TOP_UP = "TOP_UP";
+    /** Balance paid after a mid-month plan upgrade (invoiceId holds the month's invoice). */
+    public static final String UPGRADE = "UPGRADE";
     public static final String SUCCEEDED = "SUCCEEDED";
     public static final String FAILED = "FAILED";
 

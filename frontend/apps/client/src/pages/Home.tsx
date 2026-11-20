@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { AccountStatusBanner, useAccountState } from '../status';
+import { AccountStatusBanner, AmountDueCard, useAccountState } from '../status';
 import { ArrowRight, Layers, PiggyBank, RefreshCw } from 'lucide-react';
 import {
   Button, Card, CardHeader, EstimateBreakdown, ErrorNote, InvoiceTable, PageHeader, Progress, Spinner,
@@ -54,6 +54,17 @@ export function HomePage({ customerId, navigate }: { customerId: string; navigat
               await Promise.all([account.reload(), invoices.reload(), estimate.reload()]);
             },
           }}
+        />
+
+        <AmountDueCard
+          state={{
+            ...account,
+            reload: async () => {
+              await Promise.all([account.reload(), invoices.reload(), estimate.reload()]);
+            },
+          }}
+          estimateTotal={e?.lines ? toNumber(e.estimatedAmount) : null}
+          estimateCurrency={e?.currency}
         />
 
         <ErrorNote error={estimate.error} onRetry={estimate.reload} />

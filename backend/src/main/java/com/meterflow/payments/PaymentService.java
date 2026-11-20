@@ -5,6 +5,8 @@ import com.meterflow.credits.CreditService;
 import com.meterflow.invoicing.Invoice;
 import com.meterflow.invoicing.InvoiceFinalised;
 import com.meterflow.invoicing.InvoiceRepository;
+import com.meterflow.invoicing.UpgradeCharge;
+import com.meterflow.invoicing.UpgradeChargeRepository;
 import com.meterflow.subscriptions.Subscription;
 import com.meterflow.subscriptions.SubscriptionRepository;
 import com.meterflow.subscriptions.SubscriptionState;
@@ -45,6 +47,8 @@ public class PaymentService {
     private final CreditService credits;
     private final PlanRepository plans;
     private final int blockAfterUnpaid;
+    private final UpgradeChargeRepository upgradeCharges;
+    private final Duration upgradeGrace;
 
     public PaymentService(InvoiceRepository invoices, DunningRepository cases, SubscriptionRepository subscriptions,
                           MockPaymentProvider provider, ApplicationEventPublisher events,
@@ -52,7 +56,9 @@ public class PaymentService {
                           @Value("${meterflow.dunning.past-due-grace-days:7}") long graceDays,
                           @Value("${meterflow.payments.auto-collect:false}") boolean autoCollect,
                           PaymentRecordRepository records, CreditService credits, PlanRepository plans,
-                          @Value("${meterflow.payments.block-after-unpaid-invoices:2}") int blockAfterUnpaid) {
+                          @Value("${meterflow.payments.block-after-unpaid-invoices:2}") int blockAfterUnpaid,
+                          UpgradeChargeRepository upgradeCharges,
+                          @Value("${meterflow.payments.upgrade-grace-days:3}") long upgradeGraceDays) {
         this.invoices = invoices;
         this.cases = cases;
         this.subscriptions = subscriptions;
@@ -65,6 +71,104 @@ public class PaymentService {
         this.credits = credits;
         this.plans = plans;
         this.blockAfterUnpaid = Math.max(1, blockAfterUnpaid);
+        this.upgradeCharges = upgradeCharges;
+        this.upgradeGrace = Duration.ofDays(Math.max(0, upgradeGraceDays));
+    }
+
+    public long upgradeGraceDays() { return upgradeGrace.toDays(); }
+
+    /** Customer (or admin) pays the balance due after a mid-month upgrade. */
+    @Transactional
+    public Map<String, Object> payUpgradeCharge(UUID chargeId, String method) {
+        UpgradeCharge charge = upgradeCharges.findById(chargeId).orElseThrow(() -> new NoSuchElementException("Charge not found"));
+        if (UpgradeCharge.PAID.equals(charge.getStatus()))
+            return Map.of("chargeId", chargeId, "paymentStatus", "ALREADY_PAID");
+        String m = normaliseMethod(method);
+        String reference = m + "_" + UUID.randomUUID().toString().substring(0, 8);
+        charge.markPaid(reference);
+        upgradeCharges.save(charge);
+        records.save(new PaymentRecord(charge.getInvoiceId(), charge.getCustomerId(), charge.getTotal(), charge.getCurrency(), m,
+                PaymentRecord.UPGRADE, PaymentRecord.SUCCEEDED, reference, "Plan upgrade balance " + charge.getPeriod()));
+        events.publishEvent(new PaymentEvents.PaymentSucceeded(charge.getInvoiceId(), charge.getCustomerId(), charge.getTotal(),
+                charge.getCurrency(), reference));
+        resumePrepaidIfCleared(charge.getCustomerId());
+        enforceStanding(charge.getCustomerId());
+        return Map.of("chargeId", chargeId, "paymentStatus", "SUCCEEDED", "provider", "MOCK", "method", m, "reference", reference,
+                "amount", charge.getTotal(), "currency", charge.getCurrency());
+    }
+
+    /** A prepaid customer may use the service when this month's package is paid and no upgrade balance is overdue. */
+    private boolean prepaidCleared(String customerId, Instant now) {
+        String period = java.time.YearMonth.now(java.time.ZoneOffset.UTC).toString();
+        boolean packageUnpaid = invoices.findByCustomerIdAndPeriod(customerId, period)
+                .map(i -> "FINALISED".equals(i.getStatus()) && i.getTotal().signum() > 0).orElse(false);
+        return !packageUnpaid && overdueUpgradeCharges(customerId, now).isEmpty();
+    }
+
+    private List<UpgradeCharge> overdueUpgradeCharges(String customerId, Instant now) {
+        return upgradeCharges.findByCustomerIdAndStatus(customerId, UpgradeCharge.DUE).stream()
+                .filter(c -> !c.getCreatedAt().plus(upgradeGrace).isAfter(now)).toList();
+    }
+
+    private void resumePrepaidIfCleared(String customerId) {
+        if (!prepaidCleared(customerId, Instant.now())) return;
+        subscriptions.findTopByCustomerIdAndStatusOrderByPeriodStartDesc(customerId, SubscriptionState.PENDING_PAYMENT.name())
+                .ifPresent(s -> { s.resumeFromDunning(); subscriptions.save(s); });
+    }
+
+    /**
+     * What the customer owes now and what was paid this month: unpaid invoices, upgrade balances,
+     * credit balance. The client portal shows it as "Amount due" with a pay button.
+     */
+    public Map<String, Object> balance(String customerId) {
+        Instant now = Instant.now();
+        var unpaid = invoices.findByCustomerIdOrderByCreatedAtDesc(customerId).stream()
+                .filter(i -> "FINALISED".equals(i.getStatus()) && i.getTotal().signum() > 0).toList();
+        var due = upgradeCharges.findByCustomerIdAndStatus(customerId, UpgradeCharge.DUE);
+        BigDecimal unpaidTotal = unpaid.stream().map(Invoice::getTotal).reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal dueTotal = due.stream().map(UpgradeCharge::getTotal).reduce(BigDecimal.ZERO, BigDecimal::add);
+        Instant monthStart = java.time.YearMonth.now(java.time.ZoneOffset.UTC).atDay(1).atStartOfDay(java.time.ZoneOffset.UTC).toInstant();
+        BigDecimal paidThisMonth = records.findByCustomerIdOrderByCreatedAtDesc(customerId).stream()
+                .filter(r -> PaymentRecord.SUCCEEDED.equals(r.getStatus()) && !r.getCreatedAt().isBefore(monthStart))
+                .map(PaymentRecord::getAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
+        var account = credits.balance(customerId);
+        String currency = !unpaid.isEmpty() ? unpaid.get(0).getCurrency() : !due.isEmpty() ? due.get(0).getCurrency() : account.getCurrency();
+        List<Map<String, Object>> invoiceRows = new ArrayList<>();
+        for (var i : unpaid) {
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("invoiceId", i.getId());
+            row.put("period", i.getPeriod());
+            row.put("total", i.getTotal());
+            row.put("currency", i.getCurrency());
+            invoiceRows.add(row);
+        }
+        List<Map<String, Object>> chargeRows = new ArrayList<>();
+        for (var c : due) {
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("chargeId", c.getId());
+            row.put("period", c.getPeriod());
+            row.put("fromPlan", c.getFromPlan());
+            row.put("toPlan", c.getToPlan());
+            row.put("alreadyPaid", c.getAlreadyPaid());
+            row.put("total", c.getTotal());
+            row.put("currency", c.getCurrency());
+            row.put("payBy", c.getCreatedAt().plus(upgradeGrace).toString());
+            row.put("overdue", !c.getCreatedAt().plus(upgradeGrace).isAfter(now));
+            chargeRows.add(row);
+        }
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("customerId", customerId);
+        m.put("currency", currency);
+        m.put("unpaidInvoices", invoiceRows);
+        m.put("unpaidInvoicesTotal", unpaidTotal);
+        m.put("upgradeCharges", chargeRows);
+        m.put("upgradeChargesTotal", dueTotal);
+        m.put("totalDueNow", unpaidTotal.add(dueTotal));
+        m.put("paidThisMonth", paidThisMonth);
+        m.put("creditBalance", account.getBalance());
+        m.put("creditCurrency", account.getCurrency());
+        m.put("upgradeGraceDays", upgradeGrace.toDays());
+        return m;
     }
 
     /**
@@ -156,6 +260,8 @@ public class PaymentService {
         m.put("last30Days", window(last30, now.minus(Duration.ofDays(30))));
         m.put("failedToday", last30.stream().filter(r -> PaymentRecord.FAILED.equals(r.getStatus()) && !r.getCreatedAt().isBefore(dayStart)).count());
         m.put("blockAfterUnpaidInvoices", blockAfterUnpaid);
+        m.put("upgradeGraceDays", upgradeGrace.toDays());
+        m.put("upgradeChargesDue", upgradeCharges.findByStatusOrderByCreatedAtDesc(UpgradeCharge.DUE).size());
         m.put("autoCollect", autoCollect);
         return m;
     }
@@ -207,9 +313,18 @@ public class PaymentService {
         for (var s : latest.values()) {
             long count = unpaid.getOrDefault(s.getCustomerId(), 0L);
             String status = s.getStatus();
+            boolean prepaid = plans.findById(s.getPlanId()).map(p -> p.isPrepaid()).orElse(false);
+            if (prepaid) {
+                // Prepaid: an upgrade balance left unpaid past the grace days pauses the service until it is paid.
+                if (SubscriptionState.ACTIVE.name().equals(status) && !overdueUpgradeCharges(s.getCustomerId(), Instant.now()).isEmpty()) {
+                    s.awaitPayment();
+                    subscriptions.save(s);
+                    blocked.add(s.getCustomerId());
+                    events.publishEvent(new PaymentEvents.AccountStandingChanged(s.getCustomerId(), s.getStatus(), count));
+                }
+                continue;
+            }
             if (count >= blockAfterUnpaid && (SubscriptionState.ACTIVE.name().equals(status) || SubscriptionState.PAUSED_DUNNING.name().equals(status))) {
-                boolean prepaid = plans.findById(s.getPlanId()).map(p -> p.isPrepaid()).orElse(false);
-                if (prepaid) continue;
                 s.block();
                 subscriptions.save(s);
                 blocked.add(s.getCustomerId());
@@ -223,6 +338,7 @@ public class PaymentService {
         }
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("blockAfterUnpaidInvoices", blockAfterUnpaid);
+        result.put("upgradeGraceDays", upgradeGrace.toDays());
         result.put("blocked", blocked);
         result.put("unblocked", unblocked);
         return result;
@@ -265,9 +381,9 @@ public class PaymentService {
             events.publishEvent(new PaymentEvents.PaymentSucceeded(invoice.getId(), invoice.getCustomerId(), invoice.getTotal(),
                     invoice.getCurrency(), reference));
         }
-        // Prepaid: the package is paid, so the service starts (or continues) now.
-        subscriptions.findTopByCustomerIdAndStatusOrderByPeriodStartDesc(invoice.getCustomerId(), SubscriptionState.PENDING_PAYMENT.name())
-                .ifPresent(s -> { s.resumeFromDunning(); subscriptions.save(s); });
+        // Prepaid: the package is paid, so the service starts (or continues) now, unless an
+        // upgrade balance is overdue or this month's package is still unpaid.
+        resumePrepaidIfCleared(invoice.getCustomerId());
         cases.findByInvoiceId(invoice.getId()).ifPresent(c -> {
             if (!c.state().open()) return;
             c.paymentSucceeded(Instant.now());

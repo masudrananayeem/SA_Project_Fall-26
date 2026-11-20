@@ -365,7 +365,7 @@ export interface PaymentRecord {
   amount: Num;
   currency: string;
   method: string;
-  kind: 'INVOICE' | 'TOP_UP' | string;
+  kind: 'INVOICE' | 'TOP_UP' | 'UPGRADE' | string;
   status: 'SUCCEEDED' | 'FAILED' | string;
   reference: string | null;
   message: string | null;
@@ -378,7 +378,73 @@ export interface PaymentSummary {
   last30Days: { count: number; amount: Num };
   failedToday: number;
   blockAfterUnpaidInvoices: number;
+  upgradeGraceDays?: number;
+  upgradeChargesDue?: number;
   autoCollect: boolean;
+}
+
+/** Balance due after a mid-month upgrade in a month that was already invoiced (prepaid package). */
+export interface UpgradeCharge {
+  id: string;
+  customerId: string;
+  subscriptionId: string;
+  planChangeId: string;
+  invoiceId: string | null;
+  period: string;
+  currency: string;
+  fromPlan: string;
+  toPlan: string;
+  effectiveDate: string;
+  remainingDays: number;
+  daysInPeriod: number;
+  alreadyInvoiced: Num;
+  alreadyPaid: Num;
+  oldRecurring: Num;
+  newRecurring: Num;
+  subtotal: Num;
+  tax: Num;
+  total: Num;
+  taxRule: string | null;
+  explanation: string | null;
+  status: 'DUE' | 'PAID' | 'WAIVED' | string;
+  reference: string | null;
+  createdAt: string;
+  paidAt: string | null;
+}
+
+/** GET /payments/balance: what the customer owes now and what was paid this month. */
+export interface BalanceDue {
+  customerId: string;
+  currency: string;
+  unpaidInvoices: { invoiceId: string; period: string; total: Num; currency: string }[];
+  unpaidInvoicesTotal: Num;
+  upgradeCharges: { chargeId: string; period: string; fromPlan: string; toPlan: string; alreadyPaid: Num; total: Num; currency: string; payBy: string; overdue: boolean }[];
+  upgradeChargesTotal: Num;
+  totalDueNow: Num;
+  paidThisMonth: Num;
+  creditBalance: Num;
+  creditCurrency: string;
+  upgradeGraceDays: number;
+}
+
+/** GET /billing/upgrade-charges/preview: cost of changing plan now. */
+export interface PlanChangePreview {
+  mode: 'SETTLE_NOW' | 'CREDIT' | 'NEXT_INVOICE' | 'NONE' | 'PERIOD_END_ONLY';
+  fromPlan: string;
+  toPlan: string;
+  currency: string;
+  effectiveDate: string;
+  remainingDays: number;
+  daysInPeriod: number;
+  oldRecurring: Num;
+  newRecurring: Num;
+  difference: Num;
+  tax: Num;
+  totalDueNow: Num;
+  creditNow: Num;
+  alreadyInvoiced: Num;
+  alreadyPaid: Num;
+  monthlyPriceAfter: Num;
 }
 
 export interface SubscriptionAnalyticsRow {

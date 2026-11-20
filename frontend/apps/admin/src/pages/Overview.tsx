@@ -256,7 +256,7 @@ export function OverviewPage({ navigate }: { navigate: Navigate }) {
                     <div key={p.id} className="list-item">
                       <span className="list-icon">{p.status === 'SUCCEEDED' ? <CreditCard size={15} /> : <XCircle size={15} />}</span>
                       <div style={{ flex: 1 }}>
-                        <b>{p.customerId}</b> <span className="muted">· {METHOD_LABEL[p.method] || p.method}{p.kind === 'TOP_UP' ? ' · credit' : ''}</span>
+                        <b>{p.customerId}</b> <span className="muted">· {METHOD_LABEL[p.method] || p.method}{p.kind === 'TOP_UP' ? ' · credit' : p.kind === 'UPGRADE' ? ' · upgrade' : ''}</span>
                         <div className="muted small">{timeAgo(p.createdAt)}</div>
                       </div>
                       <span className={p.status === 'SUCCEEDED' ? 'amount-in' : 'amount-fail'}>{money(p.amount, p.currency)}</span>
