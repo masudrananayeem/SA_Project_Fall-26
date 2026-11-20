@@ -95,7 +95,7 @@ export function PaymentsPage({ navigate }: { navigate: Navigate }) {
             {feed.loading && !feed.data ? (
               <Spinner />
             ) : rows.length ? (
-              <Table>
+              <Table className="cards-sm">
                 <thead>
                   <tr>
                     <th>When</th>

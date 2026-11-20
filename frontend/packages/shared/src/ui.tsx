@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useRef, useState, type ButtonHTMLAttributes, type HTMLAttributes, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState, type ButtonHTMLAttributes, type HTMLAttributes, type ReactNode } from 'react';
 import { AlertTriangle, CheckCircle2, Info, Loader2, X } from 'lucide-react';
 import { titleCase } from './format';
 
@@ -357,9 +357,24 @@ export function Code({ children }: { children: ReactNode }) {
   return <pre className="code">{children}</pre>;
 }
 
+/**
+ * Data table. With className "cards-sm" each row becomes a small card on phones; every cell is
+ * labelled with its column header (copied into data-label after each render).
+ */
 export function Table({ children, className = '' }: { children: ReactNode; className?: string }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const cards = className.split(/\s+/).includes('cards-sm');
+  useLayoutEffect(() => {
+    if (!cards || !ref.current) return;
+    const heads = Array.from(ref.current.querySelectorAll('thead th')).map((th) => th.textContent?.trim() || '');
+    ref.current.querySelectorAll('tbody tr').forEach((tr) =>
+      Array.from(tr.children).forEach((td, i) => {
+        if (heads[i] && td.getAttribute('data-label') !== heads[i]) td.setAttribute('data-label', heads[i]);
+      }),
+    );
+  });
   return (
-    <div className={`table-wrap ${className}`}>
+    <div ref={ref} className={`table-wrap ${className}`}>
       <table>{children}</table>
     </div>
   );

@@ -16,7 +16,7 @@ export function InvoiceTable({ invoices, onOpen, showCustomer = true, empty }: {
           <th>Period</th>
           <th>Status</th>
           <th className="num">Total</th>
-          <th>Issued</th>
+          <th className="hide-sm">Issued</th>
         </tr>
       </thead>
       <tbody>
@@ -26,12 +26,12 @@ export function InvoiceTable({ invoices, onOpen, showCustomer = true, empty }: {
               <b className="mono">{invoiceNo(i.id)}</b>
             </td>
             {showCustomer && <td>{i.customerId}</td>}
-            <td>{periodLabel(i.period)}</td>
+            <td className="nowrap-md">{periodLabel(i.period)}</td>
             <td>
               <StatusBadge status={i.status} />
             </td>
             <td className="num strong">{money(i.total, i.currency)}</td>
-            <td className="muted">{date(i.finalisedAt || i.createdAt)}</td>
+            <td className="muted hide-sm">{date(i.finalisedAt || i.createdAt)}</td>
           </tr>
         ))}
       </tbody>

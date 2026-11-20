@@ -39,7 +39,7 @@ export function InvoicesPage({ customerId, selected, navigate }: { customerId: s
           <Card className="flush">
             <CardHeader title="Plan upgrades this year" subtitle="When you upgrade in the middle of a paid month you only pay the difference for the days that are left" />
             <div className="flush-body">
-              <Table className="compact">
+              <Table className="compact cards-sm">
                 <thead>
                   <tr>
                     <th>Month</th>
@@ -75,7 +75,7 @@ export function InvoicesPage({ customerId, selected, navigate }: { customerId: s
           <CardHeader title="Payment history" subtitle="Every payment and prepaid credit purchase on your account" />
           <div className="flush-body">
             {payments.data?.length ? (
-              <Table className="compact">
+              <Table className="compact cards-sm">
                 <thead>
                   <tr>
                     <th>Date</th>

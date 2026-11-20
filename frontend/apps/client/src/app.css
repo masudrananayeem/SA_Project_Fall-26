@@ -65,3 +65,13 @@
 .threshold { border: 1px dashed var(--border-strong); border-radius: var(--radius-sm); padding: 10px 12px; display: flex; flex-direction: column; }
 .threshold span { color: var(--muted); font-size: 12.5px; }
 .threshold.hit { border-style: solid; border-color: var(--warn-border); background: var(--warn-soft); }
+
+/* Small phones (≤400px): compact top bar so every control fits. */
+@media (max-width: 400px) {
+  .portal-bar { gap: 8px; padding: 0 10px; }
+  .portal-right { gap: 2px; }
+  .brand-btn b { display: none; }
+  .account-chip { padding: 2px; border: none; }
+  .portal-right .icon-btn { width: 34px; height: 34px; }
+  .hero-meta { gap: 12px; }
+}

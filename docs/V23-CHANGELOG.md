@@ -161,3 +161,23 @@
   - paying clears the balance and shows in the admin feed;
   - an immediate prepaid → postpaid switch is refused (400);
   - a downgrade adds the unused part to credit.
+
+## V23.3: fully responsive layout pass (no feature changes)
+
+### Checking
+- Every page of both apps was checked automatically at 12 screen widths: 320, 360, 390, 414, 600, 768, 900, 1024, 1280, 1440, 1600 and 1920 px.
+- No page scrolls sideways at any width.
+
+### Cards and grids
+- **Stat cards** sit in balanced rows: groups of 6 show 3+3, or 6 in one row on wide screens. There is never a lonely card on a second row.
+- **Cards side by side** have equal heights.
+- **Key-value blocks** are separate tiles, so an odd last item no longer leaves an empty bordered gap.
+- **"Amount due now"** is a tidy three-column strip: due, paid this month, credit. It stacks on phones.
+- **Plan cards** have equal heights, with the button at the bottom.
+- **Card headers** keep a small action (Manage, View all) on the same line as the title when it fits.
+
+### Phones
+- **Payment feeds, the payment history and the customer list** turn into labelled cards (no sideways table scrolling). This uses a generic `cards-sm` option on `Table`.
+- **The invoice table** hides the "Issued" column, keeping invoice, period, status and total.
+- **The customer portal top bar** fits on 320 px phones.
+- **Charts** never push the page wider than the screen.

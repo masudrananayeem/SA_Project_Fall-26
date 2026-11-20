@@ -135,7 +135,7 @@ export function CustomersPage({ selected, navigate }: { selected?: string; navig
           {data.loading && !data.data ? (
             <Spinner />
           ) : shown.length ? (
-            <Table>
+            <Table className="cards-sm">
               <thead>
                 <tr>
                   <th>Customer</th>
@@ -568,7 +568,7 @@ function PaymentsTab({ customerId }: { customerId: string }) {
   return (
     <div className="stack">
     {card}
-    <Table className="compact">
+    <Table className="compact cards-sm">
       <thead>
         <tr>
           <th>When</th>
