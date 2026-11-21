@@ -1,0 +1,63 @@
+# Daily billing jobs for the Render deployment.
+# A free Render service sleeps when idle, so Spring's own @Scheduled jobs may not run at their time.
+# This workflow wakes the API every day and runs each date-based job through its ADMIN endpoint.
+# Every job is idempotent: running it twice changes nothing (ADR-008).
+#
+# Setup (GitHub repository -> Settings -> Secrets and variables -> Actions -> New repository secret):
+#   METERFLOW_API_URL         https://meterflow-api.onrender.com   (your Render URL, no trailing slash)
+#   METERFLOW_ADMIN_USERNAME  the ADMIN_USERNAME you set on Render
+#   METERFLOW_ADMIN_PASSWORD  the ADMIN_PASSWORD you set on Render
+# Run it by hand: Actions -> MeterFlow daily jobs -> Run workflow.
+name: MeterFlow daily jobs
+on:
+  schedule:
+    - cron: '15 0 * * *'          # 00:15 UTC = 06:15 Dhaka
+  workflow_dispatch:
+    inputs:
+      billing_period:
+        description: 'Also run the month-end billing for this period (YYYY-MM). Empty = only on the 1st, for last month.'
+        required: false
+        default: ''
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      API: ${{ secrets.METERFLOW_API_URL }}
+      USER_NAME: ${{ secrets.METERFLOW_ADMIN_USERNAME }}
+      USER_PASS: ${{ secrets.METERFLOW_ADMIN_PASSWORD }}
+      PERIOD_INPUT: ${{ github.event.inputs.billing_period }}
+    steps:
+      - name: Check configuration
+        run: |
+          if [ -z "$API" ] || [ -z "$USER_NAME" ] || [ -z "$USER_PASS" ]; then
+            echo "::warning::METERFLOW_API_URL / METERFLOW_ADMIN_USERNAME / METERFLOW_ADMIN_PASSWORD secrets are not set; nothing to do."
+            echo "SKIP=1" >> "$GITHUB_ENV"
+          fi
+      - name: Wake the API (free instances can take about a minute)
+        if: env.SKIP != '1'
+        run: |
+          for i in $(seq 1 20); do
+            if curl -fsS --max-time 30 "$API/actuator/health" | grep -q '"UP"'; then echo "API is up"; exit 0; fi
+            echo "waiting for the API ($i)..."; sleep 15
+          done
+          echo "::error::API did not become healthy"; exit 1
+      - name: Run the daily jobs
+        if: env.SKIP != '1'
+        run: |
+          call() {
+            echo "== POST $1"
+            code=$(curl -sS -o /tmp/out.json -w '%{http_code}' --max-time 600 -X POST -u "$USER_NAME:$USER_PASS" \
+              -H 'X-Requested-With: XMLHttpRequest' -H 'Accept: application/json' "$API$1")
+            head -c 600 /tmp/out.json; echo
+            if [ "$code" -ge 400 ]; then echo "::error::$1 returned $code"; FAILED=1; fi
+          }
+          FAILED=0
+          call /api/subscriptions/lifecycle/run
+          PERIOD="$PERIOD_INPUT"
+          if [ -z "$PERIOD" ] && [ "$(date -u +%d)" = "01" ]; then PERIOD=$(date -u -d "$(date -u +%Y-%m-01) -1 day" +%Y-%m); fi
+          if [ -n "$PERIOD" ]; then call "/api/invoices/batch/run?period=$PERIOD"; fi
+          call /api/invoices/prepaid/renew
+          call /api/dunning/process
+          call /api/payments/standing/enforce
+          exit $FAILED

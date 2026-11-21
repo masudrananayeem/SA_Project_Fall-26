@@ -212,3 +212,19 @@ The brief was reviewed again line by line against the code. Two gaps were found 
   - an expired trial is never billed;
   - a paused subscription refuses usage.
 - `LeftActiveBillingTest`: a cancelled or paused customer is invoiced for the month they used, once (CREATED, then EXISTING).
+
+## V23.5: deploy on Render + Vercel
+- `render.yaml` Blueprint:
+  - backend Docker service, free plan, Singapore region, health check `/actuator/health`, profile `cloud`;
+  - JVM settings for 512 MB;
+  - every secret is asked at setup (`sync: false`).
+- `.github/workflows/daily-jobs.yml` wakes the sleeping free service every day and runs the idempotent jobs:
+  - trials;
+  - prepaid renewal;
+  - dunning;
+  - standing;
+  - month-end billing on the 1st.
+  It can also be run by hand.
+- The login page explains the roughly one-minute wake-up of a sleeping free server ("The server is waking up…").
+- `docs/DEPLOY-RENDER-VERCEL.md` is a step-by-step guide covering Neon, Render, two Vercel projects, CORS, daily jobs, checks and troubleshooting.
+- No feature or API changes.

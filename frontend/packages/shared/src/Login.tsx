@@ -27,6 +27,8 @@ export function Login({ expectedRole, appTitle, appSubtitle, highlights, otherAp
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [wrongRole, setWrongRole] = useState(false);
+  /** Free hosting (Render) puts the API to sleep when idle; the first request can take up to a minute. */
+  const [waking, setWaking] = useState(false);
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -37,6 +39,7 @@ export function Login({ expectedRole, appTitle, appSubtitle, highlights, otherAp
       return;
     }
     setBusy(true);
+    const slow = window.setTimeout(() => setWaking(true), 5000);
     try {
       const session = await signIn(username.trim(), password);
       if (!session.roles.includes(expectedRole)) {
@@ -47,6 +50,8 @@ export function Login({ expectedRole, appTitle, appSubtitle, highlights, otherAp
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
+      window.clearTimeout(slow);
+      setWaking(false);
       setBusy(false);
     }
   }
@@ -105,6 +110,9 @@ export function Login({ expectedRole, appTitle, appSubtitle, highlights, otherAp
           </label>
 
           {error && <div className="alert alert-bad compact">{error}</div>}
+          {waking && !error && (
+            <div className="alert compact">The server is waking up after a quiet period. This can take up to a minute on the first sign-in, please wait…</div>
+          )}
           {wrongRole && (
             <div className="alert alert-warn compact">
               <div>

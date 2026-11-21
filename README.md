@@ -15,6 +15,10 @@ MeterFlow is a course-project implementation foundation for usage-based SaaS/API
 - React 19, TypeScript, Vite, npm workspaces monorepo (admin console + customer portal + shared package), Recharts
 - JUnit 5, Mockito, Spring Modulith tests, Testcontainers, k6
 
+## Go live (Render + Vercel)
+
+Backend on Render (`render.yaml` Blueprint), database on Neon, admin and client on Vercel, daily billing jobs with GitHub Actions: step by step in `docs/DEPLOY-RENDER-VERCEL.md`. (The Cloudflare option is still described in `docs/DEPLOYMENT.md`.)
+
 ## V23 at a glance
 
 - Plans are **postpaid** (use first, pay later) or **prepaid** (pay first). Prepaid subscriptions wait for payment before usage is accepted.

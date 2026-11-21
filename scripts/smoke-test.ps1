@@ -19,7 +19,7 @@ function Call($method, $path, $body = $null) {
   return Invoke-RestMethod @p
 }
 
-Step "Health (first call on Cloudflare can take 1-3 minutes while the container starts)"
+Step "Health (first call on Render or Cloudflare can take 1-3 minutes while the server wakes up)"
 $health = Invoke-RestMethod -Uri "$BaseUrl/actuator/health" -TimeoutSec 300
 if ($health.status -eq "UP") { Ok "backend UP" } else { Bad "health = $($health.status)" }
 

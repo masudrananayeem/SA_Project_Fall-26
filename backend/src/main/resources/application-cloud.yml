@@ -1,4 +1,4 @@
-# Cloud demo profile (Cloudflare Containers + managed PostgreSQL, e.g. Neon).
+# Cloud demo profile (Render or Cloudflare Containers + managed PostgreSQL, e.g. Neon).
 # Basic Auth with the ADMIN_/CUSTOMER_ credentials from Cloudflare secrets (same as the frontend),
 # schema created/updated by Hibernate on an empty database, no Redis required.
 # For a real production system use the "prod" profile (OIDC JWT + Flyway validate).

@@ -1,0 +1,47 @@
+# Render Blueprint for the MeterFlow backend (Spring Boot, Docker).
+# Render dashboard -> New -> Blueprint -> pick this repository. Render reads this file, builds
+# backend/Dockerfile and asks for every value marked "sync: false" (secrets are never stored in Git).
+#
+# Database: use a free Neon PostgreSQL (it does not expire). Render's own free Postgres is deleted
+# 30 days after creation, which is too short for a project that must stay online for grading.
+# Frontends: deploy frontend/apps/admin and frontend/apps/client to Vercel (docs/DEPLOY-RENDER-VERCEL.md).
+services:
+  - type: web
+    name: meterflow-api
+    runtime: docker
+    plan: free                      # free instances sleep after 15 idle minutes; first request wakes it (about 1 minute)
+    region: singapore               # closest Render region to Bangladesh
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    healthCheckPath: /actuator/health
+    autoDeploy: true
+    buildFilter:
+      paths:
+        - backend/**
+        - render.yaml
+    envVars:
+      - key: SPRING_PROFILES_ACTIVE
+        value: cloud                # Basic Auth demo users, Hibernate creates/updates the schema, no Redis needed
+      - key: JAVA_TOOL_OPTIONS
+        value: -XX:MaxRAMPercentage=60 -XX:+UseSerialGC -Xss512k -XX:TieredStopAtLevel=1 -XX:ReservedCodeCacheSize=48m
+      - key: DB_POOL_SIZE
+        value: "4"
+      # Neon: jdbc:postgresql://<host>/<database>?sslmode=require  (direct, not the "-pooler" host)
+      - key: SPRING_DATASOURCE_URL
+        sync: false
+      - key: SPRING_DATASOURCE_USERNAME
+        sync: false
+      - key: SPRING_DATASOURCE_PASSWORD
+        sync: false
+      - key: ADMIN_USERNAME
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: CUSTOMER_USERNAME
+        sync: false
+      - key: CUSTOMER_PASSWORD
+        sync: false
+      # Both Vercel URLs, comma separated, no trailing slash:
+      # https://meterflow-admin.vercel.app,https://meterflow-client.vercel.app
+      - key: METERFLOW_CORS_ALLOWED_ORIGINS
+        sync: false
