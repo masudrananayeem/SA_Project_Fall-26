@@ -111,8 +111,8 @@ public abstract class AbstractBillingRun {
         return invoices.findByCustomerIdAndPeriod(customerId, period).isPresent();
     }
 
-    /** Subscription to bill. The real run bills only ACTIVE subscriptions. */
-    protected abstract Optional<Subscription> findSubscription(String customerId);
+    /** Subscription to bill for the period (see {@link Subscription#billableIn}). */
+    protected abstract Optional<Subscription> findSubscription(String customerId, YearMonth period);
 
     protected abstract InvoiceDocument applyCredits(BillingContext ctx, InvoiceDocument document);
 
@@ -122,7 +122,7 @@ public abstract class AbstractBillingRun {
 
     /** Returns a skip reason, or null when the customer is billable for the period. */
     protected String prepare(BillingContext ctx, UUID planOverride) {
-        var sub = findSubscription(ctx.customerId).orElse(null);
+        var sub = findSubscription(ctx.customerId, ctx.period).orElse(null);
         if (sub == null) return "No billable subscription";
         LocalDate start = ctx.period.atDay(1);
         LocalDate next = ctx.period.plusMonths(1).atDay(1);

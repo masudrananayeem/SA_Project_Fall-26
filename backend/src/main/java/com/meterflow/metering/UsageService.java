@@ -64,14 +64,39 @@ public class UsageService {
      * accepted (usage can be recorded before a plan is assigned).
      */
     public Optional<String> usageBlockedReason(String customerId) {
+        return usageBlockedReason(customerId, LocalDate.now(ZoneOffset.UTC));
+    }
+
+    /**
+     * Why usage for {@code period} is refused, if it is. Every accepted event must be billed exactly
+     * once, so usage is only taken while a subscription will invoice that month:
+     * <ul>
+     *   <li>live subscription waiting for payment, blocked, suspended or paused: refused;</li>
+     *   <li>only cancelled or expired subscriptions: accepted only for events that happened on or
+     *       before the cancellation day in a month that is still invoiced (late arrivals), refused
+     *       otherwise;</li>
+     *   <li>no subscription yet: accepted (a subscription started later that month bills it).</li>
+     * </ul>
+     */
+    public Optional<String> usageBlockedReason(String customerId, LocalDate eventDay) {
+        YearMonth period = YearMonth.from(eventDay);
         if (subscriptions == null) return Optional.empty();
-        Subscription latest = subscriptions.findByCustomerIdOrderByPeriodStartDesc(customerId).stream()
+        var all = subscriptions.findByCustomerIdOrderByPeriodStartDesc(customerId);
+        if (all.isEmpty()) return Optional.empty();
+        Subscription latest = all.stream()
                 .filter(s -> !SubscriptionState.CANCELLED.name().equals(s.getStatus()) && !SubscriptionState.EXPIRED.name().equals(s.getStatus()))
                 .findFirst().orElse(null);
-        if (latest == null || latest.state().acceptsUsage()) return Optional.empty();
+        if (latest == null) {
+            boolean stillInvoiced = all.stream().anyMatch(s -> s.billableIn(period)
+                    && s.getStatusChangedAt() != null && !eventDay.isAfter(s.getStatusChangedAt()));
+            return stillInvoiced ? Optional.empty()
+                    : Optional.of("Subscription cancelled: usage is no longer accepted. Choose a plan to start again");
+        }
+        if (latest.state().acceptsUsage()) return Optional.empty();
         return Optional.of(switch (latest.state()) {
             case PENDING_PAYMENT -> "Prepaid plan not paid yet: pay the pending invoice to start using the service";
             case BLOCKED -> "Account blocked for unpaid invoices: pay them to resume the service";
+            case PAUSED -> "Subscription is paused: resume it to send usage again";
             default -> "Service suspended for non-payment: pay the overdue invoice to resume";
         });
     }
@@ -90,7 +115,9 @@ public class UsageService {
         List<UsageEventStore.NewEvent> candidates = new ArrayList<>();
         Map<String, Optional<String>> standing = new HashMap<>();
         for (var event : inputs) {
-            Optional<String> blocked = standing.computeIfAbsent(event.customerId(), this::usageBlockedReason);
+            LocalDate eventDay = event.timestamp().atZone(ZoneOffset.UTC).toLocalDate();
+            Optional<String> blocked = standing.computeIfAbsent(event.customerId() + "|" + eventDay,
+                    key -> usageBlockedReason(event.customerId(), eventDay));
             if (blocked.isPresent()) {
                 rejected.add(Map.of("idempotencyKey", event.idempotencyKey(), "reason", blocked.get()));
                 continue;

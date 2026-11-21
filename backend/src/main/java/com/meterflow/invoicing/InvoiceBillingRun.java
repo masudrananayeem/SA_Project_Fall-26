@@ -59,8 +59,11 @@ public class InvoiceBillingRun extends AbstractBillingRun {
     }
 
     @Override
-    protected Optional<Subscription> findSubscription(String customerId) {
-        return subscriptions.findTopByCustomerIdAndStatusOrderByPeriodStartDesc(customerId, SubscriptionState.ACTIVE.name());
+    protected Optional<Subscription> findSubscription(String customerId, YearMonth period) {
+        var active = subscriptions.findTopByCustomerIdAndStatusOrderByPeriodStartDesc(customerId, SubscriptionState.ACTIVE.name());
+        if (active.isPresent()) return active;
+        // Paused, blocked, suspended or cancelled during this month: the month is still invoiced once.
+        return subscriptions.findByCustomerIdOrderByPeriodStartDesc(customerId).stream().filter(s -> s.billableIn(period)).findFirst();
     }
 
     @Override

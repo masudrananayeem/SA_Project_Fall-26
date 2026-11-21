@@ -70,7 +70,7 @@ public enum SubscriptionState {
     SubscriptionState block() { return this; }
     SubscriptionState unblock() { return this; }
     /** True when the customer may send usage (refused while waiting for payment or blocked). */
-    public boolean acceptsUsage() { return this != PENDING_PAYMENT && this != BLOCKED && this != PAUSED_DUNNING; }
+    public boolean acceptsUsage() { return this != PENDING_PAYMENT && this != BLOCKED && this != PAUSED_DUNNING && this != PAUSED; }
     public boolean billable() { return false; }
     public boolean canChangePlan() { return false; }
 

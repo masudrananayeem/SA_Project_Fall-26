@@ -65,7 +65,7 @@ public class BillingService {
         YearMonth ym = parsePeriod(period);
         List<BillingOutcome> outcomes = new ArrayList<>();
         List<String> failures = new ArrayList<>();
-        for (String customer : billableCustomers()) {
+        for (String customer : subscriptions.findBillableCustomerIds(ym.atDay(1))) {
             try {
                 outcomes.add(invoiceRun.run(customer, ym));
             } catch (RuntimeException e) {

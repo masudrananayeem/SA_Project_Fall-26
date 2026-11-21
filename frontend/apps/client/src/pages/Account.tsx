@@ -189,7 +189,13 @@ function CancelModal({ sub, onClose, onDone }: { sub: Subscription; onClose: () 
         </>
       }
     >
-      <p style={{ margin: 0 }}>Usage already recorded this month is still billed on the next invoice. You can subscribe again at any time from the Plans page.</p>
+      <div className="stack-sm">
+        <p style={{ margin: 0 }}>The service stops today; usage dated after today is refused.</p>
+        <p style={{ margin: 0 }}>
+          This month is still invoiced once at month end: the usage already recorded plus the plan&apos;s monthly fee. A prepaid package that is already paid is not
+          charged again. You can subscribe again at any time from the Plans page.
+        </p>
+      </div>
     </Modal>
   );
 }

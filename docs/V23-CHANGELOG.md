@@ -181,3 +181,34 @@
 - **The invoice table** hides the "Issued" column, keeping invoice, period, status and total.
 - **The customer portal top bar** fits on 320 px phones.
 - **Charts** never push the page wider than the screen.
+
+## V23.4: full review against the brief: "every event billed exactly once"
+
+The brief was reviewed again line by line against the code. Two gaps were found and fixed.
+
+### 1. A subscription that left ACTIVE in a month was never invoiced for that month
+- **Before:** the month-end run billed only `ACTIVE` subscriptions. A customer who cancelled, was paused, was blocked or was suspended on the 20th got no invoice for the 1st–20th: the accepted usage and the month's fee were lost. A customer could also cancel the day before billing to avoid paying.
+- **Now:**
+  - `Subscription` records `statusChangedAt` (the day its status last changed; Flyway `V6`).
+  - `billableIn(period)` is true when the subscription is active, or when it left the active state on or after the first day of the period.
+  - The billing run (`InvoiceBillingRun`, the sequential run and the batch partitioner) invoices those months once.
+  - Months that start after a cancellation or pause are not billed.
+  - An expired trial is never billed.
+  - Existing rows have no date, so they keep the old behaviour.
+
+### 2. Usage accepted that could never be billed
+- **Before:** a paused subscription still accepted usage, and so did a cancelled customer, for any month.
+- **Now, the ingestion gate:**
+  - refuses usage while the subscription is paused, with a clear reason, as it already did for awaiting payment, blocked and suspended;
+  - after a cancellation, accepts only events dated on or before the cancellation day, in a month that will still be invoiced (late arrivals, within the 72-hour window);
+  - customers with no subscription yet are still accepted: a subscription started later that month bills them.
+
+### Wording
+- The client "Cancel subscription" dialog now says exactly what happens: the service stops today, usage dated after today is refused, and this month is still invoiced once.
+
+### Tests
+- `SubscriptionBillingWindowTest`:
+  - cancelled, paused or blocked this month → billed this month, not next;
+  - an expired trial is never billed;
+  - a paused subscription refuses usage.
+- `LeftActiveBillingTest`: a cancelled or paused customer is invoiced for the month they used, once (CREATED, then EXISTING).

@@ -42,7 +42,7 @@ public class SimulationBillingRun extends AbstractBillingRun {
 
     /** Any most recent subscription, so past months of cancelled customers can be simulated too. */
     @Override
-    protected Optional<Subscription> findSubscription(String customerId) {
+    protected Optional<Subscription> findSubscription(String customerId, YearMonth period) {
         return subscriptions.findByCustomerIdOrderByPeriodStartDesc(customerId).stream().findFirst();
     }
 

@@ -49,7 +49,7 @@ public class PrepaidBillingRun extends AbstractBillingRun {
     }
 
     @Override
-    protected Optional<Subscription> findSubscription(String customerId) {
+    protected Optional<Subscription> findSubscription(String customerId, YearMonth period) {
         var pending = subscriptions.findTopByCustomerIdAndStatusOrderByPeriodStartDesc(customerId, SubscriptionState.PENDING_PAYMENT.name());
         return pending.isPresent() ? pending
                 : subscriptions.findTopByCustomerIdAndStatusOrderByPeriodStartDesc(customerId, SubscriptionState.ACTIVE.name());

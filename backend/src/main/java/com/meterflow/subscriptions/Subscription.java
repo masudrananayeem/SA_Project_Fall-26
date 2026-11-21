@@ -26,6 +26,8 @@ public class Subscription {
     @org.hibernate.annotations.ColumnDefault("true") @Column(name = "trial_auto_convert", nullable = false) private boolean trialAutoConvert = true;
     @Column private UUID scheduledPlanId;
     @Column private LocalDate scheduledChangeDate;
+    /** Day the status last changed: a subscription that left ACTIVE during a month is still invoiced for that month. */
+    @Column(name = "status_changed_at") private LocalDate statusChangedAt;
     @Version private long version;
 
     protected Subscription() { }
@@ -42,6 +44,26 @@ public class Subscription {
     public UUID getPlanId() { return planId; }
     public String getStatus() { return status; }
     public SubscriptionState state() { return SubscriptionState.valueOf(status); }
+    public LocalDate getStatusChangedAt() { return statusChangedAt; }
+
+    /** Applies a State-pattern transition and remembers the day the status changed. */
+    private void moveTo(SubscriptionState next) {
+        if (next.name().equals(status)) return;
+        status = next.name();
+        statusChangedAt = LocalDate.now(java.time.ZoneOffset.UTC);
+    }
+
+    /**
+     * True when this subscription must be invoiced for {@code period}: it is active, or it left the
+     * active state (paused, blocked, suspended, cancelled, waiting for payment) on or after the first
+     * day of the period, so usage accepted before that day is billed exactly once. A trial that expired
+     * without converting is never invoiced.
+     */
+    public boolean billableIn(java.time.YearMonth period) {
+        if (SubscriptionState.ACTIVE.name().equals(status)) return true;
+        if (SubscriptionState.EXPIRED.name().equals(status)) return false;
+        return statusChangedAt != null && !statusChangedAt.isBefore(period.atDay(1));
+    }
     public LocalDate getPeriodStart() { return periodStart; }
     public LocalDate getPeriodEnd() { return periodEnd; }
     public int getSeatCount() { return seatCount; }
@@ -79,7 +101,7 @@ public class Subscription {
             trialStatus = TRIAL_CONVERTED;
         } else {
             trialStatus = TRIAL_EXPIRED;
-            status = state().expire().name();
+            moveTo(state().expire());
         }
         return true;
     }
@@ -108,17 +130,17 @@ public class Subscription {
         planId = newPlanId;
     }
 
-    public void pause() { status = state().pause().name(); }
-    public void resume() { status = state().resume().name(); }
-    public void pauseForDunning() { status = state().suspendForDunning().name(); }
+    public void pause() { moveTo(state().pause()); }
+    public void resume() { moveTo(state().resume()); }
+    public void pauseForDunning() { moveTo(state().suspendForDunning()); }
     /** Prepaid: the package for the period is invoiced; usage waits for the payment. */
-    public void awaitPayment() { status = state().awaitPayment().name(); }
+    public void awaitPayment() { moveTo(state().awaitPayment()); }
     /** Postpaid: blocked for unpaid invoices (no-op in states it does not apply to). */
-    public void block() { status = state().block().name(); }
-    public void unblock() { status = state().unblock().name(); }
-    public void resumeFromDunning() { status = state().reactivateAfterPayment().name(); }
+    public void block() { moveTo(state().block()); }
+    public void unblock() { moveTo(state().unblock()); }
+    public void resumeFromDunning() { moveTo(state().reactivateAfterPayment()); }
     public void cancel() {
-        status = state().cancel().name();
+        moveTo(state().cancel());
         scheduledPlanId = null;
         scheduledChangeDate = null;
     }

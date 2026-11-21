@@ -39,8 +39,9 @@ public class BillingBatchConfiguration {
     @Bean Partitioner customerBillingPartitioner(SubscriptionRepository subscriptions) {
         return gridSize -> {
             // Sorted, de-duplicated customer list: partitions are deterministic for a given data set.
-            List<String> customers = subscriptions.findByStatus("ACTIVE").stream()
-                    .map(s -> s.getCustomerId()).distinct().sorted().toList();
+            // Active customers plus those paused, blocked or cancelled since they were last active;
+            // the run skips anyone with nothing to bill for the period.
+            List<String> customers = subscriptions.findBillingCandidateCustomerIds();
             int partitions = Math.min(Math.max(1, gridSize), Math.max(1, customers.size()));
             Map<String, ExecutionContext> result = new LinkedHashMap<>();
             for (int i=0; i<partitions; i++) {
